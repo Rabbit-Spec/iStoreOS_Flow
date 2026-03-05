@@ -1,8 +1,8 @@
 # ==========================================
 # iStoreOS-Flow 卡片
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.0
-# 日期：2026.03.05
+# 版本：1.1.1
+# 日期：2026.03.06
 # ==========================================
 
 type: vertical-stack
@@ -11,12 +11,16 @@ cards:
     image: /local/img/istoreos_flow.jpg
     aspect_ratio: "21:9"
     card_mod:
-      style: |
-        ha-card { border-radius: 16px !important; overflow: hidden; border: 1.5px solid var(--ha-card-border-color) !important; }
+      style: >
+        ha-card { border-radius: 16px !important; overflow: hidden; border:
+        1.5px solid var(--ha-card-border-color) !important; }
     elements:
       - type: state-label
         entity: sun.sun
-        style: { left: 13px, top: 35px, transform: none }
+        style:
+          left: 13px
+          top: 35px
+          transform: none
         card_mod:
           style: |
             :host { font-size: 0px !important; }
@@ -37,14 +41,30 @@ cards:
         y_axis: secondary
     hours_to_show: 0.5
     line_width: 3
-    show: { fill: fade, animate: true, legend: true, state: true }
+    show:
+      fill: fade
+      animate: true
+      legend: true
+      state: true
   - type: custom:mushroom-template-card
-    entity: binary_sensor.istoreos_internet
-    primary: "{{ state_attr(entity, 'ip_address') | default('未知') }}"
-    secondary: 公网 IP
-    icon: mdi:web
-    icon_color: green
-    layout: vertical
+    entity: sensor.istoreos_flow_data
+    primary: "{{ state_attr(entity, 'ip') | default('未知') }}"
+    secondary: >
+      {% set m = state_attr(entity, 'mode') %} {{ '🌐 公网 IP (主路由)' if m ==
+      'main' else '🏠 内网 IP (旁路由)' }}
+    icon: >
+      {{ 'mdi:router-wireless' if state_attr(entity, 'mode') == 'main' else
+      'mdi:server-network' }}
+    icon_color: |
+      {{ 'blue' if state_attr(entity, 'mode') == 'main' else 'orange' }}
+    vertical: true
+    features_position: bottom
+    card_mod:
+      style: |
+        ha-card {
+          border-radius: 12px;
+          background: {{ 'rgba(0, 123, 255, 0.05)' if state_attr('sensor.istoreos_flow_data', 'mode') == 'main' else 'rgba(255, 165, 0, 0.05)' }};
+        }
   - type: grid
     columns: 2
     square: false
@@ -52,13 +72,14 @@ cards:
       - type: custom:mushroom-template-card
         entity: sensor.istoreos_wan_download
         primary: "下载: {{ states(entity) }} GB"
-        secondary: "速: {{ states('sensor.istoreos_wan_download_speed') }} Mbps"
+        secondary: "当前速度: {{ states('sensor.istoreos_wan_download_speed') }} Mbps"
         icon: mdi:arrow-down-bold-circle
-        icon_color: blue
+        color: blue
+        features_position: bottom
       - type: custom:mushroom-template-card
         entity: sensor.istoreos_wan_upload
         primary: "上传: {{ states(entity) }} GB"
-        secondary: "速: {{ states('sensor.istoreos_wan_upload_speed') }} Mbps"
+        secondary: "当前速度: {{ states('sensor.istoreos_wan_upload_speed') }} Mbps"
         icon: mdi:arrow-up-bold-circle
         icon_color: orange
   - type: grid
@@ -67,40 +88,47 @@ cards:
     cards:
       - type: custom:mushroom-entity-card
         entity: sensor.istoreos_cpu
-        name: CPU负载
+        name: CPU 负载
         icon_color: red
+        icon: mdi:cpu-64-bit
       - type: custom:mushroom-entity-card
         entity: sensor.istoreos_temperature_cpu
-        name: 温度
+        name: CPU 温度
+        icon: mdi:thermometer
         icon_color: orange
       - type: custom:mushroom-entity-card
         entity: sensor.istoreos_ram
-        name: 内存占用
+        name: RAM 占用
+        icon: mdi:memory
         icon_color: purple
   - type: grid
     columns: 3
     square: false
     cards:
       - type: custom:mushroom-template-card
-        entity: switch.istoreos_proxy
-        primary: 科学加速
-        secondary: >-
-          {% set ps = states('sensor.istoreos_proxy_raw_state') %}
-          {{ ps.split('_')[1] if ps.startswith('ON_') else '已停止' }}
-        icon: mdi:rocket-launch
-        icon_color: "{{ 'blue' if is_state(entity, 'on') else 'grey' }}"
-        tap_action: { action: toggle }
+        entity: sensor.istoreos_proxy_status
+        primary: 科学上网
+        secondary: "{{ states(entity) }}"
+        icon: >
+          {{ 'mdi:rocket-outline' if is_state(entity, '未启用') else 'mdi:rocket-launch' }}
+        icon_color: >
+          {{ 'grey' if is_state(entity, '未启用') else 'blue' }}
+        layout: horizontal
+        tap_action:
+          action: none
+      
       - type: custom:mushroom-template-card
         entity: sensor.istoreos_firmware_version
         primary: iStoreOS
         secondary: "{{ states(entity) }}"
         icon: mdi:cube-outline
         icon_color: pink
+        layout: horizontal
+
       - type: custom:mushroom-template-card
-        primary: 重启
+        primary: 重启设备
         icon: mdi:restart
         icon_color: red
+        layout: horizontal
         tap_action:
           action: call-service
-          service: shell_command.reboot_istoreos_flow
-          confirmation: { text: "确定重启 iStoreOS 路由吗？" }
