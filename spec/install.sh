@@ -2,8 +2,8 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.3
-# 日期：2026.03.05
+# 版本：1.0.7
+# 日期：2026.03.06
 # ==========================================
 
 set -e 
@@ -50,19 +50,26 @@ fi
 success "目标路由 IP 锁定为: $OW_IP"
 
 # 3. 自动生成与推送 SSH 密钥
-log "步骤 2/5: 正在配置底层免密通道..."
-mkdir -p ~/.ssh
-if [ ! -f ~/.ssh/id_rsa ]; then
-    log "正在生成 Home Assistant 专属 SSH 密钥..."
-    ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -q -N ""
+log "正在配置底层免密通道 (持久化路径)..."
+# 统一使用 /config/.ssh 目录
+mkdir -p /config/.ssh
+chmod 700 /config/.ssh
+
+if [ ! -f /config/.ssh/id_rsa ]; then
+    log "生成新的 SSH 密钥..."
+    ssh-keygen -t rsa -b 2048 -f /config/.ssh/id_rsa -q -N ""
 fi
 
-warn "即将连接到路由器，请根据提示输入 iStoreOS ($OW_IP) 的 root 密码..."
-cat ~/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" \
+# 核心：必须确保私钥权限为 600，否则 SSH 会报错
+chmod 600 /config/.ssh/id_rsa
+success "本地密钥就绪。"
+
+warn "即将连接路由器，请根据提示输入 iStoreOS 的 root 密码..."
+# 使用新路径下的公钥进行推送
+cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" \
     -o "UserKnownHostsFile=/dev/null" \
-    -o "GlobalKnownHostsFile=/dev/null" \
     root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" || {
-    error "免密通道打通失败！请确认 IP 正确且 iStoreOS 的 SSH (Dropbear) 已开启。"
+    error "免密连接失败！"
     exit 1
 }
 success "SSH 免密登录配置完成！"
