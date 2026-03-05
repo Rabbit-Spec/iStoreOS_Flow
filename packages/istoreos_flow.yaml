@@ -1,7 +1,7 @@
 # ==========================================
 # iStoreOS-Flow 传感器与控制配置文件
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.2
+# 版本：1.0.3
 # 日期：2026.03.06
 # ==========================================
 
@@ -41,6 +41,14 @@ command_line:
       command_state: "bash /config/shell/istoreos_flow.sh proxy_state"
       value_template: "{{ value.startswith('ON') }}"
 
+  - sensor:
+      name: iStoreOS Flow Data
+      command: "cat /config/shell/istoreos_flow.json"
+      scan_interval: 10
+      value_template: "OK"
+      json_attributes: [uptime, mode, ip, mem_total, mem_free, load, temp, devices, wan_rx, wan_tx, fw_ver]
+
+
 template:
   - sensor:
       - name: "istoreos_uptime"
@@ -75,6 +83,11 @@ template:
       - name: "istoreos_wan_tx_bytes"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_tx') }}"
         unit_of_measurement: "B"
+      - name: "istoreos_mode_display"
+        # 增加身份显示传感器
+        state: >
+          {% set m = state_attr('sensor.istoreos_flow_data', 'mode') %}
+          {{ '主路由模式' if m == 'main' else '旁路由模式' }}
 
   - binary_sensor:
       - name: "istoreos_internet"
