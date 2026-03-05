@@ -12,35 +12,15 @@ shell_command:
 automation:
   - alias: "iStoreOS-Flow 自动同步 (定时+开机)"
     trigger:
-      # 触发器 1：每 10 秒执行一次
       - platform: time_pattern
         seconds: "/10"
-      # 触发器 2：HA 系统启动时执行一次
       - platform: homeassistant
         event: start
     action:
       - service: shell_command.update_istoreos_flow
 
 command_line:
-  - sensor:
-      name: iStoreOS Flow Data
-      command: "cat /config/shell/istoreos_flow.json"
-      scan_interval: 30
-      value_template: "OK"
-      json_attributes: [uptime, mem_total, mem_free, load, temp, devices, ip, wan_rx, wan_tx, fw_ver]
-  
-  - sensor:
-      name: iStoreOS Proxy Raw State
-      command: "bash /config/shell/istoreos_flow.sh proxy_state"
-      scan_interval: 30
-
-  - switch:
-      name: istoreos_proxy
-      command_on: "bash /config/shell/istoreos_flow.sh proxy_on"
-      command_off: "bash /config/shell/istoreos_flow.sh proxy_off"
-      command_state: "bash /config/shell/istoreos_flow.sh proxy_state"
-      value_template: "{{ value.startswith('ON') }}"
-
+  # 1. 核心数据传感器 (保留扫描快、属性全的那一个)
   - sensor:
       name: iStoreOS Flow Data
       command: "cat /config/shell/istoreos_flow.json"
@@ -48,6 +28,19 @@ command_line:
       value_template: "OK"
       json_attributes: [uptime, mode, ip, mem_total, mem_free, load, temp, devices, wan_rx, wan_tx, fw_ver]
 
+  # 2. 代理状态传感器 (统一使用 sh)
+  - sensor:
+      name: iStoreOS Proxy Raw State
+      command: "sh /config/shell/istoreos_flow.sh proxy_state"
+      scan_interval: 10
+
+  # 3. 代理开关 (统一使用 sh)
+  - switch:
+      name: istoreos_proxy
+      command_on: "sh /config/shell/istoreos_flow.sh proxy_on"
+      command_off: "sh /config/shell/istoreos_flow.sh proxy_off"
+      command_state: "sh /config/shell/istoreos_flow.sh proxy_state"
+      value_template: "{{ value.startswith('ON') }}"
 
 template:
   - sensor:
@@ -84,7 +77,6 @@ template:
         state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_tx') }}"
         unit_of_measurement: "B"
       - name: "istoreos_mode_display"
-        # 增加身份显示传感器
         state: >
           {% set m = state_attr('sensor.istoreos_flow_data', 'mode') %}
           {{ '主路由模式' if m == 'main' else '旁路由模式' }}
@@ -95,15 +87,18 @@ template:
         attributes:
           ip_address: "{{ state_attr('sensor.istoreos_flow_data', 'ip') }}"
 
+# 流量速度计算
 sensor:
   - platform: derivative
     source: sensor.istoreos_wan_rx_bytes
     name: istoreos_wan_download_speed_raw
     unit_time: s
+    unit: B/s
   - platform: derivative
     source: sensor.istoreos_wan_tx_bytes
     name: istoreos_wan_upload_speed_raw
     unit_time: s
+    unit: B/s
   - platform: template
     sensors:
       istoreos_wan_download_speed:
