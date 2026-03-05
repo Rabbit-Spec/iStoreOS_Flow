@@ -6,8 +6,8 @@
 # ==========================================
 
 shell_command:
-  update_istoreos_flow: "bash /config/shell/istoreos_flow.sh fetch"
-  reboot_istoreos_flow: "bash /config/shell/istoreos_flow.sh reboot"
+  update_istoreos_flow: "sh /config/shell/istoreos_flow.sh fetch"
+  reboot_istoreos_flow: "sh /config/shell/istoreos_flow.sh reboot"
 
 automation:
   - alias: "iStoreOS-Flow 定时同步"
