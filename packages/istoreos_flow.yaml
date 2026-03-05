@@ -1,8 +1,8 @@
 # ==========================================
 # iStoreOS-Flow 传感器与控制配置文件
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.0
-# 日期：2026.03.05
+# 版本：1.0.2
+# 日期：2026.03.06
 # ==========================================
 
 shell_command:
@@ -10,10 +10,14 @@ shell_command:
   reboot_istoreos_flow: "sh /config/shell/istoreos_flow.sh reboot"
 
 automation:
-  - alias: "iStoreOS-Flow 定时同步"
+  - alias: "iStoreOS-Flow 自动同步 (定时+开机)"
     trigger:
+      # 触发器 1：每 10 秒执行一次
       - platform: time_pattern
-        minutes: "/1"
+        seconds: "/10"
+      # 触发器 2：HA 系统启动时执行一次
+      - platform: homeassistant
+        event: start
     action:
       - service: shell_command.update_istoreos_flow
 
