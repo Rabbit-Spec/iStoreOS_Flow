@@ -20,7 +20,7 @@ automation:
       - service: shell_command.update_istoreos_flow
 
 command_line:
-  # 1. 核心数据传感器 (保留扫描快、属性全的那一个)
+  # 1. 核心数据传感器
   - sensor:
       name: iStoreOS Flow Data
       command: "cat /config/shell/istoreos_flow.json"
@@ -28,13 +28,13 @@ command_line:
       value_template: "OK"
       json_attributes: [uptime, mode, ip, mem_total, mem_free, load, temp, devices, wan_rx, wan_tx, fw_ver]
 
-  # 2. 代理状态传感器 (统一使用 sh)
+  # 2. 代理状态传感器
   - sensor:
       name: iStoreOS Proxy Raw State
       command: "sh /config/shell/istoreos_flow.sh proxy_state"
       scan_interval: 10
 
-  # 3. 代理开关 (统一使用 sh)
+  # 3. 代理开关
   - switch:
       name: istoreos_proxy
       command_on: "sh /config/shell/istoreos_flow.sh proxy_on"
@@ -46,36 +46,48 @@ template:
   - sensor:
       - name: "istoreos_uptime"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'uptime') }}"
+
       - name: "istoreos_cpu"
         unit_of_measurement: "%"
         state: "{{ (state_attr('sensor.istoreos_flow_data', 'load') | float(0) / 655.36) | round(1) }}"
+
       - name: "istoreos_ram"
         unit_of_measurement: "%"
         state: >
           {% set total = state_attr('sensor.istoreos_flow_data', 'mem_total') | float(0) %}
           {% set free = state_attr('sensor.istoreos_flow_data', 'mem_free') | float(0) %}
           {{ ((total - free) / total * 100) | round(1) if total > 0 else 0 }}
+
       - name: "istoreos_temperature_cpu"
         unit_of_measurement: "°C"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'temp') }}"
+
       - name: "istoreos_firmware_version"
-        state: "{{ state_attr('sensor.istoreos_flow_data', 'fw_ver') }}"
+        state: >
+          {% set version = state_attr('sensor.istoreos_flow_data', 'fw_ver') %}
+          {{ version.split(' ') [-1] if version else '未知' }}
+
       - name: "istoreos_connected_devices"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'devices') }}"
+
       - name: "istoreos_wan_download"
         unit_of_measurement: "GB"
         state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_rx') | float(0) / 1073741824) | round(2) }}"
         state_class: total_increasing
+
       - name: "istoreos_wan_upload"
         unit_of_measurement: "GB"
         state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_tx') | float(0) / 1073741824) | round(2) }}"
         state_class: total_increasing
+
       - name: "istoreos_wan_rx_bytes"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_rx') }}"
         unit_of_measurement: "B"
+
       - name: "istoreos_wan_tx_bytes"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_tx') }}"
         unit_of_measurement: "B"
+
       - name: "istoreos_mode_display"
         state: >
           {% set m = state_attr('sensor.istoreos_flow_data', 'mode') %}
