@@ -1,7 +1,7 @@
 # ==========================================
 # iStoreOS-Flow 卡片
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.1.1
+# 版本：1.1.2
 # 日期：2026.03.06
 # ==========================================
 
@@ -110,13 +110,11 @@ cards:
         primary: 科学上网
         secondary: "{{ states(entity) }}"
         icon: >
-          {{ 'mdi:rocket-outline' if is_state(entity, '未启用') else 'mdi:rocket-launch' }}
-        icon_color: >
+          {{ 'mdi:rocket-outline' if is_state(entity, '未启用') else
+          'mdi:rocket-launch' }}
+        color: |
           {{ 'grey' if is_state(entity, '未启用') else 'blue' }}
-        layout: horizontal
-        tap_action:
-          action: none
-      
+        features_position: bottom
       - type: custom:mushroom-template-card
         entity: sensor.istoreos_firmware_version
         primary: iStoreOS
@@ -124,7 +122,6 @@ cards:
         icon: mdi:cube-outline
         icon_color: pink
         layout: horizontal
-
       - type: custom:mushroom-template-card
         primary: 重启设备
         icon: mdi:restart
@@ -132,3 +129,6 @@ cards:
         layout: horizontal
         tap_action:
           action: call-service
+          service: shell_command.reboot_istoreos_flow
+          confirmation:
+            text: 确定重启 iStoreOS 吗？

@@ -1,7 +1,7 @@
 # ==========================================
 # iStoreOS-Flow 传感器与控制配置文件
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.8
+# 版本：1.1.2
 # 日期：2026.03.06
 # ==========================================
 
@@ -10,7 +10,7 @@ shell_command:
   reboot_istoreos_flow: "sh /config/shell/istoreos_flow.sh reboot"
 
 automation:
-  - alias: "iStoreOS-Flow 自动同步 (定时+开机)"
+  - alias: "iStoreOS-Flow 自动同步"
     trigger:
       - platform: time_pattern
         seconds: "/10"
@@ -19,16 +19,16 @@ automation:
     action:
       - service: shell_command.update_istoreos_flow
 
+# ... (shell_command 与 automation 部分保持不变)
+
 command_line:
-  # 1. 核心数据传感器：读取脚本生成的 JSON 文件
   - sensor:
       name: iStoreOS Flow Data
       command: "cat /config/shell/istoreos_flow.json"
       scan_interval: 10
       value_template: "OK"
       json_attributes: [uptime, mode, ip, mem_total, mem_free, load, temp, devices, wan_rx, wan_tx, fw_ver]
-
-  # 2. 代理状态读取：用于判断当前运行的软件
+  
   - sensor:
       name: iStoreOS Proxy Raw State
       command: "sh /config/shell/istoreos_flow.sh proxy_state"
@@ -36,28 +36,33 @@ command_line:
 
 template:
   - sensor:
-      # --- 代理状态显示逻辑 ---
       - name: "istoreos_proxy_status"
         state: >
           {% set ps = states('sensor.istoreos_proxy_raw_state') %}
-          {% if ps.startswith('ON_') %}
+          {% if ps and ps.startswith('ON_') %}
             {{ ps.split('_')[1] }}
           {% else %}
             未启用
           {% endif %}
-        icon: >
-          {% if states('sensor.istoreos_proxy_status') == '未启用' %}
-            mdi:rocket-outline
-          {% else %}
-            mdi:rocket-launch
-          {% endif %}
+        # 这里移除 icon 属性，直接在仪表盘通过逻辑控制更稳定
 
-      - name: "istoreos_uptime"
-        state: "{{ state_attr('sensor.istoreos_flow_data', 'uptime') }}"
+      - name: "istoreos_mode_display"
+        state: >
+          {% set m = state_attr('sensor.istoreos_flow_data', 'mode') %}
+          {{ '主路由模式' if m == 'main' else '旁路由模式' }}
+
+      - name: "istoreos_firmware_version"
+        state: >
+          {% set version = state_attr('sensor.istoreos_flow_data', 'fw_ver') %}
+          {{ version.split(' ') [-1] if version else '未知' }}
 
       - name: "istoreos_cpu"
         unit_of_measurement: "%"
         state: "{{ (state_attr('sensor.istoreos_flow_data', 'load') | float(0) / 655.36) | round(1) }}"
+
+      - name: "istoreos_temperature_cpu"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.istoreos_flow_data', 'temp') | float(0) }}"
 
       - name: "istoreos_ram"
         unit_of_measurement: "%"
@@ -65,28 +70,6 @@ template:
           {% set total = state_attr('sensor.istoreos_flow_data', 'mem_total') | float(0) %}
           {% set free = state_attr('sensor.istoreos_flow_data', 'mem_free') | float(0) %}
           {{ ((total - free) / total * 100) | round(1) if total > 0 else 0 }}
-
-      - name: "istoreos_temperature_cpu"
-        unit_of_measurement: "°C"
-        state: "{{ state_attr('sensor.istoreos_flow_data', 'temp') }}"
-
-      - name: "istoreos_firmware_version"
-        state: >
-          {% set version = state_attr('sensor.istoreos_flow_data', 'fw_ver') %}
-          {{ version.split(' ') [-1] if version else '未知' }}
-
-      - name: "istoreos_connected_devices"
-        state: "{{ state_attr('sensor.istoreos_flow_data', 'devices') }}"
-
-      - name: "istoreos_wan_download"
-        unit_of_measurement: "GB"
-        state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_rx') | float(0) / 1073741824) | round(2) }}"
-        state_class: total_increasing
-
-      - name: "istoreos_wan_upload"
-        unit_of_measurement: "GB"
-        state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_tx') | float(0) / 1073741824) | round(2) }}"
-        state_class: total_increasing
 
       - name: "istoreos_wan_rx_bytes"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_rx') }}"
@@ -96,18 +79,14 @@ template:
         state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_tx') }}"
         unit_of_measurement: "B"
 
-      - name: "istoreos_mode_display"
-        state: >
-          {% set m = state_attr('sensor.istoreos_flow_data', 'mode') %}
-          {{ '主路由模式' if m == 'main' else '旁路由模式' }}
+      # 流量转换（GB）
+      - name: "istoreos_wan_download"
+        unit_of_measurement: "GB"
+        state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_rx') | float(0) / 1073741824) | round(2) }}"
+      - name: "istoreos_wan_upload"
+        unit_of_measurement: "GB"
+        state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_tx') | float(0) / 1073741824) | round(2) }}"
 
-  - binary_sensor:
-      - name: "istoreos_internet"
-        state: "{{ state_attr('sensor.istoreos_flow_data', 'ip') != 'unknown' }}"
-        attributes:
-          ip_address: "{{ state_attr('sensor.istoreos_flow_data', 'ip') }}"
-
-# 流量速度计算逻辑
 sensor:
   - platform: derivative
     source: sensor.istoreos_wan_rx_bytes
