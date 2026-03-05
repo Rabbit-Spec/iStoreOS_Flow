@@ -1,0 +1,106 @@
+# ==========================================
+# iStoreOS-Flow 卡片
+# 作者：https://github.com/Rabbit-Spec
+# 版本：1.0.0
+# 日期：2026.03.05
+# ==========================================
+
+type: vertical-stack
+cards:
+  - type: picture-elements
+    image: /local/img/istoreos_flow.jpg
+    aspect_ratio: "21:9"
+    card_mod:
+      style: |
+        ha-card { border-radius: 16px !important; overflow: hidden; border: 1.5px solid var(--ha-card-border-color) !important; }
+    elements:
+      - type: state-label
+        entity: sun.sun
+        style: { left: 13px, top: 35px, transform: none }
+        card_mod:
+          style: |
+            :host { font-size: 0px !important; }
+            :host::before {
+              content: "iStoreOS-Flow"; 
+              font-size: 32px !important; font-weight: 900 !important;
+              color: white !important; letter-spacing: 4px !important;
+              text-shadow: 0px 3px 12px rgba(0,0,0,0.8); display: block;
+            }
+  - type: custom:mini-graph-card
+    entities:
+      - entity: sensor.istoreos_wan_download_speed
+        name: 下载
+        color: "#00e5ff"
+      - entity: sensor.istoreos_wan_upload_speed
+        name: 上传
+        color: "#ffc400"
+        y_axis: secondary
+    hours_to_show: 0.5
+    line_width: 3
+    show: { fill: fade, animate: true, legend: true, state: true }
+  - type: custom:mushroom-template-card
+    entity: binary_sensor.istoreos_internet
+    primary: "{{ state_attr(entity, 'ip_address') | default('未知') }}"
+    secondary: 公网 IP
+    icon: mdi:web
+    icon_color: green
+    layout: vertical
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_wan_download
+        primary: "下载: {{ states(entity) }} GB"
+        secondary: "速: {{ states('sensor.istoreos_wan_download_speed') }} Mbps"
+        icon: mdi:arrow-down-bold-circle
+        icon_color: blue
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_wan_upload
+        primary: "上传: {{ states(entity) }} GB"
+        secondary: "速: {{ states('sensor.istoreos_wan_upload_speed') }} Mbps"
+        icon: mdi:arrow-up-bold-circle
+        icon_color: orange
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: sensor.istoreos_cpu
+        name: CPU负载
+        icon_color: red
+      - type: custom:mushroom-entity-card
+        entity: sensor.istoreos_temperature_cpu
+        name: 温度
+        icon_color: orange
+      - type: custom:mushroom-entity-card
+        entity: sensor.istoreos_ram
+        name: 内存占用
+        icon_color: purple
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - type: custom:mushroom-template-card
+        entity: switch.istoreos_proxy
+        primary: 科学加速
+        secondary: >-
+          {% set ps = states('sensor.istoreos_proxy_raw_state') %}
+          {{ ps.split('_')[1] if ps.startswith('ON_') else '已停止' }}
+        icon: mdi:rocket-launch
+        icon_color: "{{ 'blue' if is_state(entity, 'on') else 'grey' }}"
+        tap_action: { action: toggle }
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_firmware_version
+        primary: iStoreOS
+        secondary: "{{ states(entity) }}"
+        icon: mdi:cube-outline
+        icon_color: pink
+      - type: custom:mushroom-template-card
+        primary: 重启
+        icon: mdi:restart
+        icon_color: red
+        tap_action:
+          action: call-service
+          service: shell_command.reboot_istoreos_flow
+          confirmation: { text: "确定重启 iStoreOS 路由吗？" }
