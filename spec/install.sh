@@ -2,72 +2,165 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.2
+# 版本：1.0.3
 # 日期：2026.03.05
 # ==========================================
 
-set -e
+set -e 
 
+# --- 颜色定义 ---
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'  
 RED='\033[0;31m'
-NC='\033[0m'
+NC='\033[0m'         
 
+# 定义基础 URL
 RAW_URL="https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main"
 
+# --- 封装日志函数 ---
+log() { echo -e "${BLUE}[INFO]${NC} $1"; }
+success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# --- 脚本逻辑 ---
 echo -e "${BLUE}======================================================${NC}"
-echo -e "          🚀 iStoreOS-Flow 自动化部署程序"
+echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
 echo -e "${BLUE}======================================================${NC}"
 
-# --- 核心自动化修复：修正 HA 系统主机名 ---
-# 检查当前系统主机名是否包含非法字符（如下划线）
+# 1. 自动修复 HA 主机名非法字符问题
 CURRENT_HOSTNAME=$(hostname)
 if [[ "$CURRENT_HOSTNAME" == *"_"* ]]; then
-    echo -e "${YELLOW}[修复] 检测到非法主机名: $CURRENT_HOSTNAME${NC}"
-    echo -e "${BLUE}正在自动将 HA 系统主机名修正为 'ha-istoreos-flow'...${NC}"
-    # 使用 HA 官方 CLI 修改系统级主机名
+    warn "检测到非法主机名: $CURRENT_HOSTNAME，可能导致 SSH 连接失败。"
+    log "正在自动将 HA 系统主机名修正为 'ha-istoreos-flow'..."
     ha host options --hostname "ha-istoreos-flow" > /dev/null 2>&1 || true
     export HOSTNAME="ha-istoreos-flow"
-    echo -e "${GREEN}✅ 主机名环境已修正。${NC}"
+    success "主机名环境已修正。"
 fi
 
-# 1. 获取并清洗 IP 地址（防止末尾有空格）
-read -p "👉 请输入 iStoreOS 的 IP (默认 192.168.1.1): " INPUT_IP
-OW_IP=$(echo "${INPUT_IP:-192.168.1.1}" | tr -d ' ')
+# 2. 防管道劫持获取 IP
+INPUT_IP=""
+echo -e "${YELLOW}👉 步骤 1/5: 请输入 iStoreOS 的 IP (直接回车默认 192.168.1.1): ${NC}"
+read INPUT_IP </dev/tty || true
+OW_IP=$(echo "$INPUT_IP" | tr -d '\r\n ')
+if [ -z "$OW_IP" ]; then
+    OW_IP="192.168.1.1"
+fi
+success "目标路由 IP 锁定为: $OW_IP"
 
-# 2. 自动生成密钥
+# 3. 自动生成与推送 SSH 密钥
+log "步骤 2/5: 正在配置底层免密通道..."
 mkdir -p ~/.ssh
 if [ ! -f ~/.ssh/id_rsa ]; then
-    echo -e "${BLUE}[1/4] 正在生成 SSH 密钥...${NC}"
+    log "正在生成 Home Assistant 专属 SSH 密钥..."
     ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -q -N ""
 fi
 
-# 3. 强制建立 SSH 连接
-echo -e "${BLUE}[2/4] 正在尝试建立免密连接，请输 root 密码...${NC}"
-# 增加 -o HostKeyAlias 选项进一步规避主机名检查
+warn "即将连接到路由器，请根据提示输入 iStoreOS ($OW_IP) 的 root 密码..."
 cat ~/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" \
     -o "UserKnownHostsFile=/dev/null" \
     -o "GlobalKnownHostsFile=/dev/null" \
     root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" || {
-    echo -e "${RED}❌ 连接失败。请确认 iStoreOS 的 SSH (Dropbear) 已开启。${NC}"
+    error "免密通道打通失败！请确认 IP 正确且 iStoreOS 的 SSH (Dropbear) 已开启。"
+    exit 1
+}
+success "SSH 免密登录配置完成！"
+
+# 4. 创建目录并下载文件
+log "步骤 3/5: 正在拉取在线核心组件..."
+mkdir -p /config/shell /config/packages /config/www/img || {
+    error "创建目录失败！请检查 Home Assistant 的系统权限。"
     exit 1
 }
 
-# 4. 下载并配置核心文件
-echo -e "${BLUE}[3/4] 正在拉取 istoreos_flow 组件...${NC}"
-mkdir -p /config/shell /config/packages /config/www/img
-curl -sSL -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh"
-curl -sSL -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml"
+curl -sSL --connect-timeout 10 --retry 3 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh" || {
+    error "下载 istoreos_flow.sh 失败！"
+    exit 1
+}
 
+curl -sSL --connect-timeout 10 --retry 3 -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml" || {
+    error "下载 istoreos_flow.yaml 失败！"
+    exit 1
+}
+
+curl -sSL --connect-timeout 15 --retry 3 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg" 2>/dev/null || warn "封面图下载失败，请稍后手动上传。"
+
+# 自动注入 IP 至脚本
 sed -i "s/ISTOREOS_IP=\".*\"/ISTOREOS_IP=\"$OW_IP\"/g" /config/shell/istoreos_flow.sh
-chmod +x /config/shell/istoreos_flow.sh
+success "核心组件下载并配置完毕。"
 
-# 5. 自动挂载配置
-echo -e "${BLUE}[4/4] 正在配置 HA 自动加载...${NC}"
-if ! grep -q "packages: !include_dir_named packages" /config/configuration.yaml; then
-    sed -i '/homeassistant:/a \  packages: !include_dir_named packages' /config/configuration.yaml
+# 5. 设置权限
+log "正在配置脚本执行权限..."
+chmod +x /config/shell/istoreos_flow.sh || {
+    error "赋予执行权限失败！"
+    exit 1
+}
+
+# 6. HACS 环境检查
+log "步骤 4/5: 正在检查 HACS 环境..."
+if [ ! -d "/config/custom_components/hacs" ]; then
+    warn "未在 /config/custom_components 中检测到 HACS。"
+    warn "请确保稍后手动安装 HACS，否则无法下载所需的前端卡片。"
+else
+    success "检测到 HACS 已安装。"
 fi
 
+# 7. YAML 安全注入配置
+log "步骤 5/5: 正在安全注入系统配置..."
+CONFIG_FILE="/config/configuration.yaml"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    error "找不到系统核心配置文件: $CONFIG_FILE！"
+    exit 1
+fi
+
+# 防粘连补丁：确保文件末尾有换行符
+sed -i -e '$a\' "$CONFIG_FILE" 2>/dev/null || echo "" >> "$CONFIG_FILE"
+
+if ! grep -q "packages:.*!include_dir_named" "$CONFIG_FILE"; then
+    warn "检测到尚未挂载 Packages，正在执行自动注入..."
+    cp "$CONFIG_FILE" "${CONFIG_FILE}.bak" || warn "无法创建备份，将继续强制注入。"
+    
+    if grep -q "^homeassistant:" "$CONFIG_FILE"; then
+        sed -i '/^homeassistant:/a \ \ packages: !include_dir_named packages' "$CONFIG_FILE" || {
+            error "sed 注入失败！"
+            exit 1
+        }
+        success "已成功将 Packages 挂载至现有 homeassistant 节点。"
+    else
+        echo -e "\nhomeassistant:\n  packages: !include_dir_named packages\n" >> "$CONFIG_FILE" || {
+            error "echo 写入失败！"
+            exit 1
+        }
+        success "已自动创建 homeassistant 节点并完成挂载。"
+    fi
+else
+    success "检测到 Packages 已配置，跳过注入步骤。"
+fi
+
+# --- 结束提示 ---
 echo -e "${GREEN}======================================================${NC}"
-echo -e "           🎉 部署完成！请重启 Home Assistant"
+echo -e "             🎉 ${YELLOW}iStoreOS-Flow 部署成功！${NC}"
+echo -e ""
+echo -e "        🧑‍💻  作者: ${BLUE}https://github.com/Rabbit-Spec${NC}"
+echo -e "        🏷️  版本: ${BLUE}v1.0.0${NC}"
+echo -e "${GREEN}======================================================${NC}"
+echo -e "${YELLOW}📌 后续操作指南：${NC}\n"
+
+echo -e " ${YELLOW}[1]${NC} 检查 HACS 依赖插件"
+echo -e "     请确保在 HACS 前端界面搜索并下载了以下插件:"
+echo -e "     ├─ ${GREEN}Mushroom${NC}"
+echo -e "     ├─ ${GREEN}Mini-Graph-Card${NC}"
+echo -e "     └─ ${GREEN}Card-mod${NC}\n"
+
+echo -e " ${YELLOW}[2]${NC} ${RED}彻底重启系统${NC}"
+echo -e "     前往 HA 的 ${BLUE}开发者工具 -> YAML 配置 -> 重新启动${NC}\n"
+
+echo -e " ${YELLOW}[3]${NC} 导入高颜值仪表盘"
+echo -e "     新建仪表盘 -> 切换至代码编辑器模式 -> 粘贴以下链接中的全部内容:"
+echo -e "     └─ ${BLUE}https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main/dashboards/dashboard.yaml${NC}\n"
+
+echo -e " ${YELLOW}💡 技术提示：${NC}"
+echo -e "     您的 iStoreOS IP (${OW_IP}) 已被全自动注入脚本，无需任何手动修改！"
 echo -e "${GREEN}======================================================${NC}"
