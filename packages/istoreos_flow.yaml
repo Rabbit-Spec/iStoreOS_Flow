@@ -1,7 +1,7 @@
 # ==========================================
 # iStoreOS-Flow 传感器与控制配置文件
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.7
+# 版本：1.0.8
 # 日期：2026.03.06
 # ==========================================
 
@@ -20,7 +20,7 @@ automation:
       - service: shell_command.update_istoreos_flow
 
 command_line:
-  # 1. 核心数据传感器
+  # 1. 核心数据传感器：读取脚本生成的 JSON 文件
   - sensor:
       name: iStoreOS Flow Data
       command: "cat /config/shell/istoreos_flow.json"
@@ -28,22 +28,30 @@ command_line:
       value_template: "OK"
       json_attributes: [uptime, mode, ip, mem_total, mem_free, load, temp, devices, wan_rx, wan_tx, fw_ver]
 
-  # 2. 代理状态传感器
+  # 2. 代理状态读取：用于判断当前运行的软件
   - sensor:
       name: iStoreOS Proxy Raw State
       command: "sh /config/shell/istoreos_flow.sh proxy_state"
       scan_interval: 10
 
-  # 3. 代理开关
-  - switch:
-      name: istoreos_proxy
-      command_on: "sh /config/shell/istoreos_flow.sh proxy_on"
-      command_off: "sh /config/shell/istoreos_flow.sh proxy_off"
-      command_state: "sh /config/shell/istoreos_flow.sh proxy_state"
-      value_template: "{{ value.startswith('ON') }}"
-
 template:
   - sensor:
+      # --- 代理状态显示逻辑 ---
+      - name: "istoreos_proxy_status"
+        state: >
+          {% set ps = states('sensor.istoreos_proxy_raw_state') %}
+          {% if ps.startswith('ON_') %}
+            {{ ps.split('_')[1] }}
+          {% else %}
+            未启用
+          {% endif %}
+        icon: >
+          {% if states('sensor.istoreos_proxy_status') == '未启用' %}
+            mdi:rocket-outline
+          {% else %}
+            mdi:rocket-launch
+          {% endif %}
+
       - name: "istoreos_uptime"
         state: "{{ state_attr('sensor.istoreos_flow_data', 'uptime') }}"
 
@@ -99,7 +107,7 @@ template:
         attributes:
           ip_address: "{{ state_attr('sensor.istoreos_flow_data', 'ip') }}"
 
-# 流量速度计算
+# 流量速度计算逻辑
 sensor:
   - platform: derivative
     source: sensor.istoreos_wan_rx_bytes
