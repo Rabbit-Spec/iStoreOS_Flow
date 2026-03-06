@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.3.3
+# 版本：1.3.4
 # 日期：2026.03.06
 # ==========================================
 
@@ -28,7 +28,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # --- 脚本逻辑 ---
 echo -e "${BLUE}======================================================${NC}"
 echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
-echo -e "                🏷️  版本: v1.3.3"
+echo -e "                🏷️  版本: v1.3.4"
 echo -e "${BLUE}======================================================${NC}"
 
 # 1. 自动修复 HA 主机名
@@ -106,7 +106,7 @@ curl -sSL --connect-timeout 20 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/
 success "istoreos_flow.jpg 下载成功。"
 
 log "正在下载: mushroom-glass.yaml"
-curl -sSL --connect-timeout 20 -o /config/themes/mushroom-glass.yaml "${RAW_URL}/themes/istoreos_flow.jpg?v=$T" || { error "下载失败"; exit 1; }
+curl -sSL --connect-timeout 20 -o /config/themes/mushroom-glass.yaml "${RAW_URL}/themes/mushroom-glass.yaml?v=$T" || { error "下载失败"; exit 1; }
 success "mushroom-glass.yaml 下载成功。"
 
 log "正在执行 IP 地址动态注入..."
@@ -146,7 +146,7 @@ echo -e "${GREEN}======================================================${NC}"
 echo -e "             🎉 ${YELLOW}iStoreOS-Flow 部署成功！${NC}"
 echo -e ""
 echo -e "        🧑‍💻  作者: ${BLUE}https://github.com/Rabbit-Spec${NC}"
-echo -e "        🏷️  版本: ${BLUE}v1.3.3${NC}"
+echo -e "        🏷️  版本: ${BLUE}v1.3.4${NC}"
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${YELLOW}📌 后续操作指南：${NC}\n"
 
