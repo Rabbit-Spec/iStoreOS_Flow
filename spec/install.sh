@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.3.1
+# 版本：1.3.2
 # 日期：2026.03.06
 # ==========================================
 
@@ -28,7 +28,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # --- 脚本逻辑 ---
 echo -e "${BLUE}======================================================${NC}"
 echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
-echo -e "                🏷️  版本: v1.3.1"
+echo -e "                🏷️  版本: v1.3.2"
 echo -e "${BLUE}======================================================${NC}"
 
 # 1. 自动修复 HA 主机名
@@ -74,14 +74,12 @@ fi
 chmod 600 /config/.ssh/id_rsa
 
 log "正在执行免密连通性预检..."
-# ✅ 关键修复：加入 -n 参数，防止 ssh 吞噬管道里的后续脚本
 if ssh -n -o "BatchMode=yes" -o "ConnectTimeout=3" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -i /config/.ssh/id_rsa root@"$OW_IP" "exit" < /dev/null >/dev/null 2>&1; then
     success "检测到双机已建立免密授权，跳过密钥推送流程。"
 else
     warn "未检测到授权，即将尝试推送公钥..."
     warn "请在下方提示处输入 iStoreOS 的 root 密码并回车:"
-    # ✅ 关键修复：同样加入 < /dev/null 隔离输入流
-    cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" < /dev/null || {
+    cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" || {
         error "无法建立授权！安装中断。"
         exit 1
     }
@@ -144,7 +142,7 @@ echo -e "${GREEN}======================================================${NC}"
 echo -e "             🎉 ${YELLOW}iStoreOS-Flow 部署成功！${NC}"
 echo -e ""
 echo -e "        🧑‍💻  作者: ${BLUE}https://github.com/Rabbit-Spec${NC}"
-echo -e "        🏷️  版本: ${BLUE}v1.3.1${NC}"
+echo -e "        🏷️  版本: ${BLUE}v1.3.2${NC}"
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${YELLOW}📌 后续操作指南：${NC}\n"
 
