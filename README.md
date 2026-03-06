@@ -55,6 +55,9 @@ curl -sSL https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main/spec/
 ### 3. 导入仪表盘 (Dashboards)
 新建仪表盘面板，将 `dashboards/dashboard.yaml` 内容粘贴至代码编辑器。
 
+
+---
+
 ## ⚠️ 免责声明
 * 请确保你的iStoreOS设备已开启 SSH 权限。
 * 本脚本涉及模拟登录操作，请勿在公网环境下暴露 SSH 端口。
