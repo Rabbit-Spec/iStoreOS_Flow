@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 数据采集脚本 (精准排查适配版)
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.1.2
+# 版本：1.1.4
 # 日期：2026.03.06
 # ==========================================
 
@@ -53,18 +53,18 @@ case "$ACTION" in
 
     fetch)
         $SSH_CMD '
-            # 1. 系统基础信息抓取
+            # 1. 系统基础信息抓取 (保持不变)
             sysinfo=$(ubus call system info)
             uptime=$(echo "$sysinfo" | jsonfilter -e "@.uptime")
             mem_total=$(echo "$sysinfo" | jsonfilter -e "@.memory.total")
             mem_free=$(echo "$sysinfo" | jsonfilter -e "@.memory.free")
             load=$(echo "$sysinfo" | jsonfilter -e "@.load[0]")
             
-            # 2. 智能探测与 IP 切换逻辑
+            # 2. 智能探测主旁路由 (保持不变)
             wan_name=$(ubus list network.interface.* | cut -d. -f3 | grep -E "wan|pppoe" | head -n 1)
             [ -z "$wan_name" ] && wan_name="wan"
             wan_status=$(ubus call network.interface.$wan_name status 2>/dev/null)
-            wan_ip=$(echo "$wan_status" | jsonfilter -e "@[\"ipv4-address\"][0].address")
+            wan_ip=$(echo "$wan_status" | jsonfilter -e "@[\"ipv4-address\"][0].address" 2>/dev/null)
             
             if [ -n "$wan_ip" ] && [ "$wan_ip" != "unknown" ]; then
                 mode="main"
@@ -72,12 +72,11 @@ case "$ACTION" in
                 wan_dev=$(echo "$wan_status" | jsonfilter -e "@.l3_device")
             else
                 mode="side"
-                # 旁路由模式：获取 LAN 内网 IP，流量锁定 br-lan
-                display_ip=$(ubus call network.interface.lan status | jsonfilter -e "@[\"ipv4-address\"][0].address")
+                display_ip=$(ubus call network.interface.lan status | jsonfilter -e "@[\"ipv4-address\"][0].address" 2>/dev/null)
                 wan_dev="br-lan"
             fi
             
-            # 3. 流量、温度与版本
+            # 3. 流量、温度与版本 (保持不变)
             rx=0; tx=0
             [ -n "$wan_dev" ] && dev_status=$(ubus call network.device status "{\"name\":\"$wan_dev\"}" 2>/dev/null)
             rx=$(echo "$dev_status" | jsonfilter -e "@.statistics.rx_bytes" || echo 0)
@@ -86,8 +85,29 @@ case "$ACTION" in
             devices=$(cat /proc/net/arp | grep -c -v IP)
             fw_version=$(grep "DISTRIB_DESCRIPTION" /etc/openwrt_release | cut -d"'"'"'" -f2)
 
-            # 4. JSON 格式化输出 (确保包含 mode 字段)
-            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%d,\"mem_free\":%d,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\"}\n" \
-                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version"
+            # ==========================================
+            # 💡 新增：自适应动态抓取物理网口状态与速率
+            # ==========================================
+            ports_json="["
+            first_port=1
+            # 过滤提取物理网卡名称 (如 eth0, enp1s0, lan1, wan 等)
+            for iface in $(ls /sys/class/net/ | grep -E "^(eth|en|lan|wan|igb)"); do
+                operstate=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "down")
+                if [ "$operstate" = "up" ]; then
+                    speed=$(cat /sys/class/net/$iface/speed 2>/dev/null || echo "0")
+                    [ "$speed" = "-1" ] && speed=0 # 处理虚拟机/特殊网卡测不到速度的情况
+                else
+                    speed=0
+                fi
+                
+                [ $first_port -eq 0 ] && ports_json="$ports_json,"
+                ports_json="$ports_json{\"name\":\"$iface\",\"state\":\"$operstate\",\"speed\":$speed}"
+                first_port=0
+            done
+            ports_json="$ports_json]"
+            # ==========================================
+
+            # 4. JSON 格式化输出 (尾部加入了 ports 数组)
+            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%d,\"mem_free\":%d,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s}\n" \
+                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json"
         ' > /config/shell/istoreos_flow.json ;;
-esac
