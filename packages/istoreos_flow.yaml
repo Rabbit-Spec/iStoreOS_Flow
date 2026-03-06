@@ -1,7 +1,7 @@
 # ==========================================
 # iStoreOS-Flow 传感器与控制配置文件
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.3.1
+# 版本：1.3.2
 # 日期：2026.03.06
 # ==========================================
 
@@ -121,6 +121,15 @@ template:
           {% set minutes = (uptime % 3600) // 60 %}
           {{ days }} 天 {{ hours }} 时 {{ minutes }} 分
 
+      # --- 修复：从底部迁移过来的新版网速换算传感器 ---
+      - name: "istoreos_wan_download_speed"
+        unit_of_measurement: "Mbps"
+        state: "{{ [ (states('sensor.istoreos_wan_download_speed_raw') | float(0) * 8 / 1000000) | round(2), 0 ] | max }}"
+
+      - name: "istoreos_wan_upload_speed"
+        unit_of_measurement: "Mbps"
+        state: "{{ [ (states('sensor.istoreos_wan_upload_speed_raw') | float(0) * 8 / 1000000) | round(2), 0 ] | max }}"
+
 # 5. 衍生传感器：用于计算实时网速
 sensor:
   # 将累加的总下载字节数转换为每秒下载字节数 (B/s)
@@ -135,13 +144,3 @@ sensor:
     name: istoreos_wan_upload_speed_raw
     unit_time: s
     unit: B/s
-  
-  # 最后一步：将 B/s 换算为我们常说的带宽单位 Mbps (兆比特每秒)
-  - platform: template
-    sensors:
-      istoreos_wan_download_speed:
-        unit_of_measurement: "Mbps"
-        value_template: "{{ [ (states('sensor.istoreos_wan_download_speed_raw') | float(0) * 8 / 1000000) | round(2), 0 ] | max }}"
-      istoreos_wan_upload_speed:
-        unit_of_measurement: "Mbps"
-        value_template: "{{ [ (states('sensor.istoreos_wan_upload_speed_raw') | float(0) * 8 / 1000000) | round(2), 0 ] | max }}"
