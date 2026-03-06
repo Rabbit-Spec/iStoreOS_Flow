@@ -1,11 +1,10 @@
 #!/bin/bash
 # ==========================================
-# iStoreOS-Flow 数据采集脚本 (精准排查适配版)
+# iStoreOS-Flow 数据采集脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.9
+# 版本：1.2.91
 # 日期：2026.03.06
 # ==========================================
-
 
 ISTOREOS_IP="192.168.1.1" 
 SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /config/.ssh/id_rsa root@$ISTOREOS_IP"
@@ -55,6 +54,10 @@ case "$ACTION" in
             devices=$(cat /proc/net/arp | grep -c -v IP)
             fw_version=$(grep "DISTRIB_DESCRIPTION" /etc/openwrt_release | cut -d"'"'"'" -f2)
 
+            # --- 新增：获取根目录的存储空间 (单位: KB) ---
+            disk_total=$(df -k / | tail -n 1 | tr -s " " | cut -d " " -f 2)
+            disk_free=$(df -k / | tail -n 1 | tr -s " " | cut -d " " -f 4)
+
             ports_json="["
             first_port=1
             for iface in $(ls /sys/class/net/ | grep -E "^(eth|en|lan|wan|igb|br-)"); do
@@ -72,7 +75,8 @@ case "$ACTION" in
             done
             ports_json="$ports_json]"
 
-            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%lu,\"mem_free\":%lu,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s}\n" \
-                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json"
+            # --- 修改：在 JSON 结尾追加 disk_total 和 disk_free ---
+            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%lu,\"mem_free\":%lu,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s,\"disk_total\":%lu,\"disk_free\":%lu}\n" \
+                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json" "${disk_total:-0}" "${disk_free:-0}"
         ' > /config/shell/istoreos_flow.json ;;
 esac
