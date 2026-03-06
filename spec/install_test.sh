@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.7
+# 版本：1.2.8
 # 日期：2026.03.06
 # ==========================================
 
@@ -28,7 +28,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # --- 脚本逻辑 ---
 echo -e "${BLUE}======================================================${NC}"
 echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
-echo -e "                🏷️  版本: v1.2.7"
+echo -e "                🏷️  版本: v1.2.8"
 echo -e "${BLUE}======================================================${NC}"
 
 # 1. 自动修复 HA 主机名
@@ -37,9 +37,9 @@ CURRENT_HOSTNAME=$(hostname)
 if [[ "$CURRENT_HOSTNAME" == *"_"* ]]; then
     warn "检测到非法主机名: $CURRENT_HOSTNAME，正在修复..."
     ha host options --hostname "ha-istoreos-flow" > /dev/null 2>&1 || true
-    success "系统主机名环境修正完成。"
+    success "系统环境修正完成。"
 else
-    success "系统主机名正常。"
+    success "系统环境正常。"
 fi
 
 # 2. IP 获取
@@ -51,46 +51,49 @@ if [ -z "$OW_IP" ]; then
     OW_IP="192.168.1.1"
 fi
 
-# 增加网络连通性检查
 log "正在检测 $OW_IP 是否在线..."
 if ping -c 1 -W 2 "$OW_IP" >/dev/null 2>&1; then
     success "网络连通性校验通过。"
 else
-    error "无法连接到 $OW_IP，请检查 IP 是否正确！"
+    error "无法连接到 $OW_IP，请检查网络！"
     exit 1
 fi
 success "目标路由 IP 已锁定为: $OW_IP"
 
 # 3. SSH 密钥配置
 log "步骤 2/5: 开始配置底层加密免密通道..."
-mkdir -p /config/.ssh
-chmod 700 /config/.ssh
+mkdir -p /config/.ssh && chmod 700 /config/.ssh
 
 if [ ! -f /config/.ssh/id_rsa ]; then
     log "正在生成 RSA 密钥对..."
     ssh-keygen -t rsa -b 2048 -f /config/.ssh/id_rsa -q -N ""
-    success "新密钥对生成成功。"
+    success "密钥生成成功。"
 else
     success "检测到本地已有密钥对，跳过生成。"
 fi
 chmod 600 /config/.ssh/id_rsa
 
 log "正在执行免密连通性预检..."
-if ssh -o "BatchMode=yes" -o "ConnectTimeout=3" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -i /config/.ssh/id_rsa root@"$OW_IP" "exit" >/dev/null 2>&1; then
+# ✅ 关键修复：加入 -n 参数，防止 ssh 吞噬管道里的后续脚本
+if ssh -n -o "BatchMode=yes" -o "ConnectTimeout=3" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -i /config/.ssh/id_rsa root@"$OW_IP" "exit" < /dev/null >/dev/null 2>&1; then
     success "检测到双机已建立免密授权，跳过密钥推送流程。"
 else
     warn "未检测到授权，即将尝试推送公钥..."
     warn "请在下方提示处输入 iStoreOS 的 root 密码并回车:"
-    cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" || {
-        error "无法建立授权！请检查密码。安装中断。"
+    # ✅ 关键修复：同样加入 < /dev/null 隔离输入流
+    cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" < /dev/null || {
+        error "无法建立授权！安装中断。"
         exit 1
     }
     success "SSH 公钥已成功写入。"
 fi
 
-# 4. 下载文件
+# 4. 下载文件 (因为隔离了 SSH，这一步现在会被正常执行)
 log "步骤 3/5: 开始拉取 iStoreOS-Flow 核心组件..."
+
+log "正在创建本地目录结构..."
 mkdir -p /config/shell /config/packages /config/www/img
+success "目录准备就绪。"
 
 log "正在下载: istoreos_flow.sh"
 curl -sSL --connect-timeout 15 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh?v=$T" || { error "下载失败"; exit 1; }
@@ -104,7 +107,7 @@ log "正在下载: istoreos_flow.jpg"
 curl -sSL --connect-timeout 20 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg?v=$T" || { error "下载失败"; exit 1; }
 success "istoreos_flow.jpg 下载成功。"
 
-log "正在注入 IP 地址..."
+log "正在执行 IP 地址动态注入..."
 sed -i "s/ISTOREOS_IP=\".*\"/ISTOREOS_IP=\"$OW_IP\"/g" /config/shell/istoreos_flow.sh
 chmod +x /config/shell/istoreos_flow.sh
 success "脚本环境配置完毕。"
@@ -123,7 +126,7 @@ CONFIG_FILE="/config/configuration.yaml"
 sed -i -e '$a\' "$CONFIG_FILE" 2>/dev/null || echo "" >> "$CONFIG_FILE"
 
 if ! grep -q "packages:.*!include_dir_named" "$CONFIG_FILE"; then
-    log "正在执行注入..."
+    log "正在配置 Packages 引用..."
     cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
     if grep -q "^homeassistant:" "$CONFIG_FILE"; then
         sed -i '/^homeassistant:/a \ \ packages: !include_dir_named packages' "$CONFIG_FILE"
@@ -132,15 +135,16 @@ if ! grep -q "packages:.*!include_dir_named" "$CONFIG_FILE"; then
     fi
     success "Packages 挂载成功。"
 else
-    success "挂载点已存在，无需操作。"
+    success "检测到挂载点已存在，无需操作。"
 fi
+
 
 # --- 结束提示 ---
 echo -e "${GREEN}======================================================${NC}"
 echo -e "             🎉 ${YELLOW}iStoreOS-Flow 部署成功！${NC}"
 echo -e ""
 echo -e "        🧑‍💻  作者: ${BLUE}https://github.com/Rabbit-Spec${NC}"
-echo -e "        🏷️  版本: ${BLUE}v1.2.7${NC}"
+echo -e "        🏷️  版本: ${BLUE}v1.2.8${NC}"
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${YELLOW}📌 后续操作指南：${NC}\n"
 
