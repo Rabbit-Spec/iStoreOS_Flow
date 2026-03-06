@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.0.7
+# 版本：1.1.4
 # 日期：2026.03.06
 # ==========================================
 
@@ -49,30 +49,34 @@ if [ -z "$OW_IP" ]; then
 fi
 success "目标路由 IP 锁定为: $OW_IP"
 
-# 3. 自动生成与推送 SSH 密钥
+# 3. 自动生成与推送 SSH 密钥 (带智能拦截与指纹免疫)
 log "正在配置底层免密通道 (持久化路径)..."
-# 统一使用 /config/.ssh 目录
 mkdir -p /config/.ssh
 chmod 700 /config/.ssh
 
+# 3.1 检查本地是否已有密钥
 if [ ! -f /config/.ssh/id_rsa ]; then
     log "生成新的 SSH 密钥..."
     ssh-keygen -t rsa -b 2048 -f /config/.ssh/id_rsa -q -N ""
+else
+    success "检测到本地已存在 SSH 密钥，跳过生成步骤。"
 fi
-
-# 核心：必须确保私钥权限为 600，否则 SSH 会报错
 chmod 600 /config/.ssh/id_rsa
-success "本地密钥就绪。"
 
-warn "即将连接路由器，请根据提示输入 iStoreOS 的 root 密码..."
-# 使用新路径下的公钥进行推送
-cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" \
-    -o "UserKnownHostsFile=/dev/null" \
-    root@"$OW_IP" "mkdir -p /etc/dropbear && tee -a /etc/dropbear/authorized_keys" || {
-    error "免密连接失败！"
-    exit 1
-}
-success "SSH 免密登录配置完成！"
+# 3.2 智能探测：检查路由器是否已经可以通过免密登录
+log "正在测试免密连接状态..."
+if ssh -o "BatchMode=yes" -o "ConnectTimeout=3" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -i /config/.ssh/id_rsa root@"$OW_IP" "exit" >/dev/null 2>&1; then
+    success "检测到已成功配置免密登录，跳过密钥推送！"
+else
+    warn "未检测到免密授权，即将连接路由器，请根据提示输入 iStoreOS 的 root 密码..."
+    cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" \
+        -o "UserKnownHostsFile=/dev/null" \
+        root@"$OW_IP" "mkdir -p /etc/dropbear && awk '!a[\$0]++' /etc/dropbear/authorized_keys > /tmp/ak.tmp 2>/dev/null; mv /tmp/ak.tmp /etc/dropbear/authorized_keys 2>/dev/null; tee -a /etc/dropbear/authorized_keys" || {
+        error "免密连接失败！请检查密码或路由状态。"
+        exit 1
+    }
+    success "SSH 免密登录配置完成！"
+fi
 
 # 4. 创建目录并下载文件
 log "步骤 3/5: 正在拉取在线核心组件..."
