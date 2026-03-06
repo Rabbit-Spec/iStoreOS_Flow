@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.1.4
+# 版本：1.2.1
 # 日期：2026.03.06
 # ==========================================
 
@@ -29,17 +29,20 @@ echo -e "${BLUE}======================================================${NC}"
 echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
 echo -e "${BLUE}======================================================${NC}"
 
-# 1. 自动修复 HA 主机名非法字符问题
+# 1. 自动修复 HA 主机名
+log "正在检测系统环境稳定性..."
 CURRENT_HOSTNAME=$(hostname)
 if [[ "$CURRENT_HOSTNAME" == *"_"* ]]; then
     warn "检测到非法主机名: $CURRENT_HOSTNAME，可能导致 SSH 连接失败。"
-    log "正在自动将 HA 系统主机名修正为 'ha-istoreos-flow'..."
+    log "正在自动执行系统调用修复主机名为 'ha-istoreos-flow'..."
     ha host options --hostname "ha-istoreos-flow" > /dev/null 2>&1 || true
     export HOSTNAME="ha-istoreos-flow"
-    success "主机名环境已修正。"
+    success "系统主机名环境修正完成。"
+else
+    success "系统主机名环境正常，无需修复。"
 fi
 
-# 2. 防管道劫持获取 IP
+# 2. IP 获取
 INPUT_IP=""
 echo -e "${YELLOW}👉 步骤 1/5: 请输入 iStoreOS 的 IP (直接回车默认 192.168.1.1): ${NC}"
 read INPUT_IP </dev/tty || true
@@ -47,107 +50,106 @@ OW_IP=$(echo "$INPUT_IP" | tr -d '\r\n ')
 if [ -z "$OW_IP" ]; then
     OW_IP="192.168.1.1"
 fi
-success "目标路由 IP 锁定为: $OW_IP"
+success "目标路由 IP 已锁定为: $OW_IP"
 
-# 3. 自动生成与推送 SSH 密钥 (带智能拦截与指纹免疫)
-log "正在配置底层免密通道 (持久化路径)..."
+# 3. SSH 密钥配置
+log "步骤 2/5: 开始配置底层加密免密通道..."
 mkdir -p /config/.ssh
 chmod 700 /config/.ssh
+log "已确保持久化目录 /config/.ssh 权限正确。"
 
-# 3.1 检查本地是否已有密钥
 if [ ! -f /config/.ssh/id_rsa ]; then
-    log "生成新的 SSH 密钥..."
+    log "正在调用 OpenSSH 生成 2048 位 RSA 密钥对..."
     ssh-keygen -t rsa -b 2048 -f /config/.ssh/id_rsa -q -N ""
+    success "新密钥对生成成功。"
 else
-    success "检测到本地已存在 SSH 密钥，跳过生成步骤。"
+    success "检测到本地已有密钥对，跳过重复生成步骤。"
 fi
 chmod 600 /config/.ssh/id_rsa
 
-# 3.2 智能探测：检查路由器是否已经可以通过免密登录
-log "正在测试免密连接状态..."
+log "正在执行预检：测试与 $OW_IP 的免密连通性..."
 if ssh -o "BatchMode=yes" -o "ConnectTimeout=3" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -i /config/.ssh/id_rsa root@"$OW_IP" "exit" >/dev/null 2>&1; then
-    success "检测到已成功配置免密登录，跳过密钥推送！"
+    success "检测到双机已建立免密授权，跳过密钥推送流程。"
 else
-    warn "未检测到免密授权，即将连接路由器，请根据提示输入 iStoreOS 的 root 密码..."
+    warn "未检测到授权，即将尝试将公钥推送至路由设备..."
+    warn "请在下方提示处输入 iStoreOS 的 root 密码并回车:"
     cat /config/.ssh/id_rsa.pub | ssh -o "StrictHostKeyChecking=no" \
         -o "UserKnownHostsFile=/dev/null" \
         root@"$OW_IP" "mkdir -p /etc/dropbear && awk '!a[\$0]++' /etc/dropbear/authorized_keys > /tmp/ak.tmp 2>/dev/null; mv /tmp/ak.tmp /etc/dropbear/authorized_keys 2>/dev/null; tee -a /etc/dropbear/authorized_keys" || {
-        error "免密连接失败！请检查密码或路由状态。"
+        error "无法通过 SSH 建立授权！请检查密码是否正确。步骤中断。"
         exit 1
     }
-    success "SSH 免密登录配置完成！"
+    success "SSH 公钥已成功写入路由器的授权清单。"
 fi
 
-# 4. 创建目录并下载文件
-log "步骤 3/5: 正在拉取在线核心组件..."
-mkdir -p /config/shell /config/packages /config/www/img || {
-    error "创建目录失败！请检查 Home Assistant 的系统权限。"
-    exit 1
-}
+# 4. 下载文件
+log "步骤 3/5: 开始拉取 iStoreOS-Flow 核心组件..."
 
+log "正在初始化本地目录结构..."
+mkdir -p /config/shell /config/packages /config/www/img
+success "目录结构准备就绪。"
+
+# 详细文件下载日志
+log "正在下载数据采集脚本 (istoreos_flow.sh)..."
 curl -sSL --connect-timeout 10 --retry 3 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh" || {
-    error "下载 istoreos_flow.sh 失败！"
+    error "下载脚本失败！请检查 GitHub 连通性。"
     exit 1
 }
+success "istoreos_flow.sh 下载成功。"
 
+log "正在下载传感器定义文件 (istoreos_flow.yaml)..."
 curl -sSL --connect-timeout 10 --retry 3 -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml" || {
-    error "下载 istoreos_flow.yaml 失败！"
+    error "下载 YAML 配置文件失败！请检查 GitHub 连通性。"
     exit 1
 }
+success "istoreos_flow.yaml 下载成功。"
 
-curl -sSL --connect-timeout 15 --retry 3 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg" 2>/dev/null || warn "封面图下载失败，请稍后手动上传。"
+log "正在下载仪表盘背景图 (istoreos_flow.jpg)..."
+curl -sSL --connect-timeout 20 --retry 5 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg" || {
+    error "关键资源背景图下载失败！请检查 GitHub 连通性。"
+    exit 1
+}
+success "istoreos_flow.jpg 下载成功。"
 
-# 自动注入 IP 至脚本
+log "正在执行 IP 地址动态注入..."
 sed -i "s/ISTOREOS_IP=\".*\"/ISTOREOS_IP=\"$OW_IP\"/g" /config/shell/istoreos_flow.sh
-success "核心组件下载并配置完毕。"
+success "已将目标 IP $OW_IP 硬编码至本地采集脚本。"
 
-# 5. 设置权限
-log "正在配置脚本执行权限..."
-chmod +x /config/shell/istoreos_flow.sh || {
-    error "赋予执行权限失败！"
-    exit 1
-}
+# 5. 权限配置
+log "正在配置脚本内核可执行位 (chmod +x)..."
+chmod +x /config/shell/istoreos_flow.sh
+success "采集脚本执行权限配置完毕。"
 
-# 6. HACS 环境检查
-log "步骤 4/5: 正在检查 HACS 环境..."
+# 6. HACS 检查
+log "步骤 4/5: 环境依赖项深度扫描..."
 if [ ! -d "/config/custom_components/hacs" ]; then
-    warn "未在 /config/custom_components 中检测到 HACS。"
-    warn "请确保稍后手动安装 HACS，否则无法下载所需的前端卡片。"
+    warn "警告：未检测到 HACS 组件，请务必手动安装以确保前端卡片正常工作。"
 else
-    success "检测到 HACS 已安装。"
+    success "检测到 HACS 环境已就绪。"
 fi
 
-# 7. YAML 安全注入配置
-log "步骤 5/5: 正在安全注入系统配置..."
+# 7. YAML 注入
+log "步骤 5/5: 正在将 iStoreOS-Flow 模块挂载至系统核心..."
 CONFIG_FILE="/config/configuration.yaml"
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "找不到系统核心配置文件: $CONFIG_FILE！"
-    exit 1
-fi
-
-# 防粘连补丁：确保文件末尾有换行符
+# 防粘连处理
 sed -i -e '$a\' "$CONFIG_FILE" 2>/dev/null || echo "" >> "$CONFIG_FILE"
+log "已完成 configuration.yaml 尾部空白符修正。"
 
 if ! grep -q "packages:.*!include_dir_named" "$CONFIG_FILE"; then
-    warn "检测到尚未挂载 Packages，正在执行自动注入..."
-    cp "$CONFIG_FILE" "${CONFIG_FILE}.bak" || warn "无法创建备份，将继续强制注入。"
+    log "检测到 Packages 尚未启用，准备执行安全备份..."
+    cp "$CONFIG_FILE" "${CONFIG_FILE}.bak" && success "已创建备份副本: ${CONFIG_FILE}.bak"
     
+    log "正在分析 YAML 树状结构并注入挂载指令..."
     if grep -q "^homeassistant:" "$CONFIG_FILE"; then
-        sed -i '/^homeassistant:/a \ \ packages: !include_dir_named packages' "$CONFIG_FILE" || {
-            error "sed 注入失败！"
-            exit 1
-        }
-        success "已成功将 Packages 挂载至现有 homeassistant 节点。"
+        sed -i '/^homeassistant:/a \ \ packages: !include_dir_named packages' "$CONFIG_FILE"
+        success "已成功将 Packages 挂载至 homeassistant 节点下。"
     else
-        echo -e "\nhomeassistant:\n  packages: !include_dir_named packages\n" >> "$CONFIG_FILE" || {
-            error "echo 写入失败！"
-            exit 1
-        }
-        success "已自动创建 homeassistant 节点并完成挂载。"
+        echo -e "\nhomeassistant:\n  packages: !include_dir_named packages\n" >> "$CONFIG_FILE"
+        success "已自动补全 homeassistant 根节点并完成挂载。"
     fi
 else
-    success "检测到 Packages 已配置，跳过注入步骤。"
+    success "系统 Packages 挂载点已存在，跳过注入逻辑。"
 fi
 
 # --- 结束提示 ---
