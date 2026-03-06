@@ -1,0 +1,124 @@
+# ==========================================
+# iStoreOS-Flow 传感器与控制配置文件
+# 作者：https://github.com/Rabbit-Spec
+# 版本：1.2.92
+# 日期：2026.03.06
+# ==========================================
+
+shell_command:
+  update_istoreos_flow: "sh /config/shell/istoreos_flow.sh fetch"
+  reboot_istoreos_flow: "sh /config/shell/istoreos_flow.sh reboot"
+
+automation:
+  - alias: "iStoreOS-Flow 自动同步"
+    trigger:
+      - platform: time_pattern
+        seconds: "/10"
+      - platform: homeassistant
+        event: start
+    action:
+      - service: shell_command.update_istoreos_flow
+
+# ... (shell_command 与 automation 部分保持不变)
+
+command_line:
+  - sensor:
+      name: iStoreOS Flow Data
+      command: "cat /config/shell/istoreos_flow.json"
+      scan_interval: 10
+      value_template: "OK"
+      json_attributes: [uptime, mode, ip, mem_total, mem_free, load, temp, devices, wan_rx, wan_tx, fw_ver, ports, disk_total, disk_free]
+  
+  - sensor:
+      name: iStoreOS Proxy Raw State
+      command: "sh /config/shell/istoreos_flow.sh proxy_state"
+      scan_interval: 10
+
+template:
+  - sensor:
+      - name: "istoreos_proxy_status"
+        state: >
+          {% set ps = states('sensor.istoreos_proxy_raw_state') %}
+          {% if ps and ps.startswith('ON_') %}
+            {{ ps.split('_')[1] }}
+          {% else %}
+            未启用
+          {% endif %}
+
+      - name: "istoreos_mode_display"
+        state: >
+          {% set m = state_attr('sensor.istoreos_flow_data', 'mode') %}
+          {{ '主路由模式' if m == 'main' else '旁路由模式' }}
+
+      - name: "istoreos_firmware_version"
+        state: >
+          {% set version = state_attr('sensor.istoreos_flow_data', 'fw_ver') %}
+          {{ version.split(' ') [-1] if version else '未知' }}
+
+      - name: "istoreos_cpu"
+        unit_of_measurement: "%"
+        state: "{{ (state_attr('sensor.istoreos_flow_data', 'load') | float(0) / 655.36) | round(1) }}"
+
+      - name: "istoreos_temperature_cpu"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.istoreos_flow_data', 'temp') | float(0) }}"
+
+      - name: "istoreos_ram"
+        unit_of_measurement: "%"
+        state: >
+          {% set total = state_attr('sensor.istoreos_flow_data', 'mem_total') | float(0) %}
+          {% set free = state_attr('sensor.istoreos_flow_data', 'mem_free') | float(0) %}
+          {{ ((total - free) / total * 100) | round(1) if total > 0 else 0 }}
+
+      - name: "istoreos_disk"
+        unit_of_measurement: "%"
+        state: >
+          {% set total = state_attr('sensor.istoreos_flow_data', 'disk_total') | float(0) %}
+          {% set free = state_attr('sensor.istoreos_flow_data', 'disk_free') | float(0) %}
+          {{ ((total - free) / total * 100) | round(1) if total > 0 else 0 }}
+
+      - name: "istoreos_wan_rx_bytes"
+        state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_rx') }}"
+        unit_of_measurement: "B"
+
+      - name: "istoreos_wan_tx_bytes"
+        state: "{{ state_attr('sensor.istoreos_flow_data', 'wan_tx') }}"
+        unit_of_measurement: "B"
+
+      - name: "istoreos_wan_download"
+        unit_of_measurement: "GB"
+        state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_rx') | float(0) / 1073741824) | round(2) }}"
+      - name: "istoreos_wan_upload"
+        unit_of_measurement: "GB"
+        state: "{{ (state_attr('sensor.istoreos_flow_data', 'wan_tx') | float(0) / 1073741824) | round(2) }}"
+
+      - name: "istoreos_connected_devices"
+        state: "{{ state_attr('sensor.istoreos_flow_data', 'devices') | default(0) }}"
+        
+      - name: "istoreos_uptime_formatted"
+        state: >
+          {% set uptime = state_attr('sensor.istoreos_flow_data', 'uptime') | int(0) %}
+          {% set days = uptime // 86400 %}
+          {% set hours = (uptime % 86400) // 3600 %}
+          {% set minutes = (uptime % 3600) // 60 %}
+          {{ days }} 天 {{ hours }} 时 {{ minutes }} 分
+
+sensor:
+  - platform: derivative
+    source: sensor.istoreos_wan_rx_bytes
+    name: istoreos_wan_download_speed_raw
+    unit_time: s
+    unit: B/s
+  - platform: derivative
+    source: sensor.istoreos_wan_tx_bytes
+    name: istoreos_wan_upload_speed_raw
+    unit_time: s
+    unit: B/s
+  - platform: template
+    sensors:
+      istoreos_wan_download_speed:
+        unit_of_measurement: "Mbps"
+        value_template: "{{ [ (states('sensor.istoreos_wan_download_speed_raw') | float(0) * 8 / 1000000) | round(2), 0 ] | max }}"
+      istoreos_wan_upload_speed:
+        unit_of_measurement: "Mbps"
+        value_template: "{{ [ (states('sensor.istoreos_wan_upload_speed_raw') | float(0) * 8 / 1000000) | round(2), 0 ] | max }}"
