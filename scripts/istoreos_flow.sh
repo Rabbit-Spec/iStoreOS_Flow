@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 数据采集脚本 (多盘自动扫描版)
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.92
+# 版本：1.2.95
 # 日期：2026.03.06
 # ==========================================
 
@@ -54,14 +54,12 @@ case "$ACTION" in
             devices=$(cat /proc/net/arp | grep -c -v IP)
             fw_version=$(grep "DISTRIB_DESCRIPTION" /etc/openwrt_release | cut -d"'"'"'" -f2)
 
-            # --- 修改：自动扫描所有挂载盘 (系统盘 + /mnt 下的所有硬盘) ---
             disks_json="["
             first_disk=1
             disk_total=0
             disk_free=0
             for mnt in / $(ls -d /mnt/* 2>/dev/null); do
                 [ ! -d "$mnt" ] && continue
-                # 过滤一些不必要的虚拟挂载点
                 case "$mnt" in /mnt/cfg*|/mnt/log*) continue ;; esac
                 
                 df_info=$(df -k "$mnt" | tail -n 1 | tr -s " ")
@@ -93,8 +91,10 @@ case "$ACTION" in
             done
             ports_json="$ports_json]"
 
-            # --- 修改：保持原有结构，仅在 JSON 结尾追加 disks 列表数据 ---
-            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%lu,\"mem_free\":%lu,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s,\"disk_total\":%lu,\"disk_free\":%lu,\"disks\":%s}\n" \
-                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json" "${disk_total:-0}" "${disk_free:-0}" "$disks_json"
+            ping_ms=$(ping -c 1 -W 1 223.5.5.5 | grep "time=" | sed "s/.*time=\([0-9.]*\).*/\1/")
+            [ -z "$ping_ms" ] && ping_ms=0
+
+            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%lu,\"mem_free\":%lu,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s,\"disk_total\":%lu,\"disk_free\":%lu,\"disks\":%s,\"ping\":%.1f}\n" \
+                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json" "${disk_total:-0}" "${disk_free:-0}" "$disks_json" "${ping_ms:-0}"
         ' > /config/shell/istoreos_flow.json ;;
 esac
