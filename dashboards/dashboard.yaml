@@ -1,7 +1,7 @@
 # ==========================================
 # iStoreOS-Flow 卡片
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.1.2
+# 版本：1.2.8
 # 日期：2026.03.06
 # ==========================================
 
@@ -132,3 +132,33 @@ cards:
           service: shell_command.reboot_istoreos_flow
           confirmation:
             text: 确定重启 iStoreOS 吗？
+  - type: custom:mushroom-template-card
+    entity: sensor.istoreos_flow_data
+    primary: 物理网口状态
+    secondary: >
+      {% set ports = state_attr('sensor.istoreos_flow_data', 'ports') %} {% if
+      ports is not none %}
+        {% if ports | length == 0 %}
+          未匹配到物理网口
+        {% else %}
+          {% set ns = namespace(res=[]) %}
+          {% for port in ports %}
+            {% set state_text = port.speed ~ ' Mbps' if port.state == 'up' and port.speed > 0 else '未连接' %}
+            {% set ns.res = ns.res + [ port.name | upper ~ ' (' ~ state_text ~ ')' ] %}
+          {% endfor %}
+          {{ ns.res | join('  •  ') }}
+        {% endif %}
+      {% else %}
+        正在获取数据...
+      {% endif %}
+    icon: mdi:ethernet-cable
+    icon_color: >
+      {% set ports = state_attr('sensor.istoreos_flow_data', 'ports') %} {% if
+      ports and ports | selectattr('state', 'eq', 'up') | list | length > 0 %}
+        green
+      {% else %}
+        grey
+      {% endif %}
+    multiline_secondary: true
+    fill_container: true
+
