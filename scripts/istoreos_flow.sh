@@ -1,8 +1,8 @@
 #!/bin/bash
 # ==========================================
-# iStoreOS-Flow 数据采集脚本
+# iStoreOS-Flow 数据采集脚本 (多盘自动扫描版)
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.91
+# 版本：1.2.92
 # 日期：2026.03.06
 # ==========================================
 
@@ -54,9 +54,27 @@ case "$ACTION" in
             devices=$(cat /proc/net/arp | grep -c -v IP)
             fw_version=$(grep "DISTRIB_DESCRIPTION" /etc/openwrt_release | cut -d"'"'"'" -f2)
 
-            # --- 新增：获取根目录的存储空间 (单位: KB) ---
-            disk_total=$(df -k / | tail -n 1 | tr -s " " | cut -d " " -f 2)
-            disk_free=$(df -k / | tail -n 1 | tr -s " " | cut -d " " -f 4)
+            # --- 修改：自动扫描所有挂载盘 (系统盘 + /mnt 下的所有硬盘) ---
+            disks_json="["
+            first_disk=1
+            disk_total=0
+            disk_free=0
+            for mnt in / $(ls -d /mnt/* 2>/dev/null); do
+                [ ! -d "$mnt" ] && continue
+                # 过滤一些不必要的虚拟挂载点
+                case "$mnt" in /mnt/cfg*|/mnt/log*) continue ;; esac
+                
+                df_info=$(df -k "$mnt" | tail -n 1 | tr -s " ")
+                d_total=$(echo "$df_info" | cut -d " " -f 2)
+                d_free=$(echo "$df_info" | cut -d " " -f 4)
+                d_name=$(basename "$mnt")
+                [ "$d_name" == "/" ] && { d_name="System"; disk_total=$d_total; disk_free=$d_free; }
+                
+                [ $first_disk -eq 0 ] && disks_json="$disks_json,"
+                disks_json="$disks_json{\"name\":\"$d_name\",\"total\":$d_total,\"free\":$d_free}"
+                first_disk=0
+            done
+            disks_json="$disks_json]"
 
             ports_json="["
             first_port=1
@@ -75,8 +93,8 @@ case "$ACTION" in
             done
             ports_json="$ports_json]"
 
-            # --- 修改：在 JSON 结尾追加 disk_total 和 disk_free ---
-            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%lu,\"mem_free\":%lu,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s,\"disk_total\":%lu,\"disk_free\":%lu}\n" \
-                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json" "${disk_total:-0}" "${disk_free:-0}"
+            # --- 修改：保持原有结构，仅在 JSON 结尾追加 disks 列表数据 ---
+            printf "{\"uptime\":%d,\"mode\":\"%s\",\"ip\":\"%s\",\"mem_total\":%lu,\"mem_free\":%lu,\"load\":%d,\"temp\":%.1f,\"devices\":%d,\"wan_rx\":%lu,\"wan_tx\":%lu,\"fw_ver\":\"%s\",\"ports\":%s,\"disk_total\":%lu,\"disk_free\":%lu,\"disks\":%s}\n" \
+                   "$uptime" "$mode" "$display_ip" "$mem_total" "$mem_free" "$load" "$(($temp_raw/1000))" "$devices" "$rx" "$tx" "$fw_version" "$ports_json" "${disk_total:-0}" "${disk_free:-0}" "$disks_json"
         ' > /config/shell/istoreos_flow.json ;;
 esac
