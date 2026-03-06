@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.5
+# 版本：1.2.7
 # 日期：2026.03.06
 # ==========================================
 
@@ -28,7 +28,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # --- 脚本逻辑 ---
 echo -e "${BLUE}======================================================${NC}"
 echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
-echo -e "                🏷️  版本: v1.2.5"
+echo -e "                🏷️  版本: v1.2.7"
 echo -e "${BLUE}======================================================${NC}"
 
 # 1. 自动修复 HA 主机名
@@ -39,16 +39,25 @@ if [[ "$CURRENT_HOSTNAME" == *"_"* ]]; then
     ha host options --hostname "ha-istoreos-flow" > /dev/null 2>&1 || true
     success "系统主机名环境修正完成。"
 else
-    success "系统主机名环境正常。"
+    success "系统主机名正常。"
 fi
 
 # 2. IP 获取
-# ✅ 修复：移除了错误的 /tty 重定向，确保在各种终端环境下都能正确读取输入
-echo -e "${YELLOW}👉 步骤 1/5: 请输入 iStoreOS 的 IP (直接回车默认 192.168.1.1): ${NC}"
-read -p "" INPUT_IP || true
+echo -ne "${YELLOW}👉 步骤 1/5: 请输入 iStoreOS 的 IP (直接回车默认 192.168.1.1): ${NC}"
+read INPUT_IP < /dev/tty || INPUT_IP=""
+
 OW_IP=$(echo "$INPUT_IP" | tr -d '\r\n ')
 if [ -z "$OW_IP" ]; then
     OW_IP="192.168.1.1"
+fi
+
+# 增加网络连通性检查
+log "正在检测 $OW_IP 是否在线..."
+if ping -c 1 -W 2 "$OW_IP" >/dev/null 2>&1; then
+    success "网络连通性校验通过。"
+else
+    error "无法连接到 $OW_IP，请检查 IP 是否正确！"
+    exit 1
 fi
 success "目标路由 IP 已锁定为: $OW_IP"
 
@@ -67,7 +76,6 @@ fi
 chmod 600 /config/.ssh/id_rsa
 
 log "正在执行免密连通性预检..."
-# 增加 UserKnownHostsFile=/dev/null 保证稳定性
 if ssh -o "BatchMode=yes" -o "ConnectTimeout=3" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -i /config/.ssh/id_rsa root@"$OW_IP" "exit" >/dev/null 2>&1; then
     success "检测到双机已建立免密授权，跳过密钥推送流程。"
 else
@@ -82,34 +90,21 @@ fi
 
 # 4. 下载文件
 log "步骤 3/5: 开始拉取 iStoreOS-Flow 核心组件..."
-
-log "正在初始化本地目录结构..."
 mkdir -p /config/shell /config/packages /config/www/img
-success "目录结构准备就绪。"
 
-# 注入 v=$T 强制刷新 CDN 缓存
 log "正在下载: istoreos_flow.sh"
-curl -sSL --connect-timeout 15 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh?v=$T" || {
-    error "下载 istoreos_flow.sh 失败！"
-    exit 1
-}
+curl -sSL --connect-timeout 15 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh?v=$T" || { error "下载失败"; exit 1; }
 success "istoreos_flow.sh 下载成功。"
 
 log "正在下载: istoreos_flow.yaml"
-curl -sSL --connect-timeout 15 -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml?v=$T" || {
-    error "下载 istoreos_flow.yaml 失败！"
-    exit 1
-}
+curl -sSL --connect-timeout 15 -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml?v=$T" || { error "下载失败"; exit 1; }
 success "istoreos_flow.yaml 下载成功。"
 
-log "正在下载背景图: istoreos_flow.jpg"
-curl -sSL --connect-timeout 20 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg?v=$T" || {
-    error "背景图下载失败！"
-    exit 1
-}
+log "正在下载: istoreos_flow.jpg"
+curl -sSL --connect-timeout 20 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg?v=$T" || { error "下载失败"; exit 1; }
 success "istoreos_flow.jpg 下载成功。"
 
-log "正在执行 IP 动态注入..."
+log "正在注入 IP 地址..."
 sed -i "s/ISTOREOS_IP=\".*\"/ISTOREOS_IP=\"$OW_IP\"/g" /config/shell/istoreos_flow.sh
 chmod +x /config/shell/istoreos_flow.sh
 success "脚本环境配置完毕。"
@@ -117,19 +112,18 @@ success "脚本环境配置完毕。"
 # 5. HACS 检查
 log "步骤 4/5: 环境依赖项深度扫描..."
 if [ ! -d "/config/custom_components/hacs" ]; then
-    warn "警告：未检测到 HACS 组件，请手动安装以确保前端卡片工作。"
+    warn "警告：未检测到 HACS 组件。"
 else
-    success "检测到 HACS 环境已就绪。"
+    success "HACS 已就绪。"
 fi
 
 # 6. YAML 注入
 log "步骤 5/5: 正在挂载 Packages 模块..."
 CONFIG_FILE="/config/configuration.yaml"
-# 确保文件末尾有换行
 sed -i -e '$a\' "$CONFIG_FILE" 2>/dev/null || echo "" >> "$CONFIG_FILE"
 
 if ! grep -q "packages:.*!include_dir_named" "$CONFIG_FILE"; then
-    log "准备执行安全备份并注入挂载指令..."
+    log "正在执行注入..."
     cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
     if grep -q "^homeassistant:" "$CONFIG_FILE"; then
         sed -i '/^homeassistant:/a \ \ packages: !include_dir_named packages' "$CONFIG_FILE"
@@ -146,7 +140,7 @@ echo -e "${GREEN}======================================================${NC}"
 echo -e "             🎉 ${YELLOW}iStoreOS-Flow 部署成功！${NC}"
 echo -e ""
 echo -e "        🧑‍💻  作者: ${BLUE}https://github.com/Rabbit-Spec${NC}"
-echo -e "        🏷️  版本: ${BLUE}v1.2.5${NC}"
+echo -e "        🏷️  版本: ${BLUE}v1.2.7${NC}"
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${YELLOW}📌 后续操作指南：${NC}\n"
 
