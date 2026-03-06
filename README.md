@@ -1,65 +1,58 @@
 [![Support on Afdian](https://img.shields.io/badge/Support-爱发电-orange.svg?style=flat-square&logo=afdian)](https://afdian.com/a/Rabbit-Spec)
-<h1 align="center">iStoreOS Flow</h1>
+<h1 align="center">iStoreOS-Flow</h1>
 
 <p align="center">
-  专为中兴 ZX279133 光猫设计的高级 Home Assistant 监控方案
-</p>
-<p align="center">
-通过底层 Telnet 自动化脚本，将光猫的硬件状态、链路质量及网络流量解析并同步至 HomeAssistant 仪表盘。
+  专为 iStoreOS (OpenWrt) 打造的 HomeAssistant 全能极简监控面板
 </p>
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/Rabbit-Spec/ZTE-ModemFlow/main/IMG/1.PNG" width="300"></img>
-<img src="https://raw.githubusercontent.com/Rabbit-Spec/ZTE-ModemFlow/main/IMG/2.PNG" width="300"></img>
+<img src="https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main/img/1.PNG?v=2" width="600"></img>
 </p>
 
 ## ✨ 核心亮点
 
-* **极致采集效率**：采用“单次登录、批量读取”逻辑，只需建立一个 Telnet 会话即可抓取全部 `/proc` 快照，避免频繁登录光猫增加负载。
-* **高性能的解析**：内置智能“数据拼图”算法，利用 `awk` 自动识别并修复因中兴终端宽度限制导致的断行数据，确保解析精度。
-* **视觉巅峰体验**：配套 **Mushroom Glass** 主题，实现高斯模糊（冰霜玻璃）效果，专为手机小屏幕体验优化排版。
-* **全维度监控**：涵盖 CPU 占用、实时温度、内存占用（总/可用）、运行时间、PON 网络 FEC 物理错误及 LAN 端口收发包统计。
+* **原生高效采集**：彻底抛弃老旧低效的文本截取，采用 OpenWrt 原生 `ubus` 总线与 `jsonfilter`，毫秒级响应，几乎零 CPU 负载。
+* **一键全自动部署**：内置智能安装脚本，全自动搞定 SSH 免密认证握手、目录创建、脚本拉取与 YAML 配置注入，小白也能轻松上手。
+* **全场景状态监控**：不仅涵盖 CPU、温度、内存、实时速率，更独创**“多物理硬盘自动轮播”**与**“物理网口拔插状态/协商速率”**可视化。
+* **代理环境感知**：自动侦测 OpenClash, PassWall, PassWall2, Nikki 等主流科学上网插件的运行状态。
+* **视觉巅峰体验**：深度定制的 Mushroom 模块化网格布局，配合 Card-mod 实现完美的圆角与阴影层级，专为跨设备（手机/平板/PC）响应式排版优化。
 
 ## 📂 仓库结构
 
 ```text
-├── conf/
-│   └── configuration.yaml    # 包含命令行传感器、模板传感器及数据库优化配置
+├── install.sh               # 🚀 一键全自动部署脚本 (核心)
+├── packages/
+│   └── istoreos_flow.yaml   # HA 核心配置文件 (含传感器拆解与现代模板换算)
+├── shell/
+│   └── istoreos_flow.sh     # 运行在 HA 容器内的数据采集核心脚本 (Bash)
 ├── dashboards/
-│   └── dashboard.yaml       # 基于 Mushroom 和 Mini-graph-card 的仪表盘代码
-├── scripts/
-│   ├── zte_monitor.sh       # 数据采集核心脚本（含拼图算法与 JSON 导出）
-│   └── reboot_modem.sh      # 远程重启触发脚本
-└── themes/
-    └── mushroom-glass.yaml   # 适配明暗模式的毛玻璃主题文件
+│   └── dashboard.yaml       # 基于 Mushroom 的高颜值仪表盘卡片代码
+├── themes/
+│     └── mushroom-glass.yaml   # 适配明暗模式的毛玻璃主题文件
+└── img/
+    └── istoreos_flow-2.jpg  # 仪表盘顶图海报素材
 ```
 
 ## 🧩 依赖插件 (HACS)
 
 在导入本项目配置前，请确保已在 **HACS 商店** 安装以下前端组件：
-1. **Mushroom Cards**：基础 UI 架构。
-2. **Mini Graph Card**：用于显示趋势曲线。
+1. **Mushroom**：基础 UI 架构。
+2. **Mini-Graph-Card**：用于显示趋势曲线。
 3. **Card-mod**：核心视觉依赖，用于实现模糊效果。
 
-## 🚀 安装与配置
+## 🚀 快速开始 (一键部署)
 
-### 1. 部署脚本 (Scripts)
-将 `scripts/` 目录下的文件上传至 `/config/shell/` 文件夹下，并赋予执行权限：
+### 1. 在 Home Assistant 的终端 (Terminal / SSH) 中直接粘贴并运行以下命令：
+
 ```bash
-chmod +x /config/shell/zte_monitor.sh
-chmod +x /config/shell/reboot_modem.sh
+# 使用脚本一键安装
+curl -sSL https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main/spec/install.sh?$(date +%s) | bash
 ```
-> **注意**：脚本默认 Telnet 登录信息为 `root` / `Zte521`，如不同请自行修改。
 
-### 2. 配置光猫数据传感器 (Conf)
-将 `conf/configuration.yaml` 内容合并至你的 HA `configuration.yaml` 配置。
+### 2. 应用主题 (Themes)
+在 HomeAssistant 用户界面中应用 Mushroom Glass 主题
 
-脚本会生成 `zte_data.json` 文件由 `command_line` 传感器读取。
-
-### 3. 应用主题 (Themes)
-将 `themes/mushroom-glass.yaml` 放入 HA 的 `themes` 目录并启用该主题。
-
-### 4. 导入仪表盘 (Dashboards)
+### 3. 导入仪表盘 (Dashboards)
 新建仪表盘面板，将 `dashboards/dashboard.yaml` 内容粘贴至代码编辑器。
 
 ## 📊 监控指标说明
@@ -72,8 +65,8 @@ chmod +x /config/shell/reboot_modem.sh
 | **内网延迟** | HA 到光猫的物理响应 | 基于 ICMP Ping 探测 |
 
 ## ⚠️ 免责声明
-* 请确保你的光猫已开启 Telnet 权限。
-* 本脚本涉及模拟登录操作，请勿在公网环境下暴露 Telnet 端口。
+* 请确保你的iStoreOS设备已开启 SSH 权限。
+* 本脚本涉及模拟登录操作，请勿在公网环境下暴露 SSH 端口。
 
 ---
 
