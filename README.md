@@ -55,15 +55,6 @@ curl -sSL https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main/spec/
 ### 3. 导入仪表盘 (Dashboards)
 新建仪表盘面板，将 `dashboards/dashboard.yaml` 内容粘贴至代码编辑器。
 
-## 📊 监控指标说明
-
-| 传感器名称 | 物理意义 | 技术细节 |
-| :--- | :--- | :--- |
-| **CPU 负载** | 实时系统占用百分比 | 抓取自 `/proc/cpuusage` |
-| **内存占用** | (Total - Avail) / Total | 自动计算百分比，预防内存泄漏 |
-| **PON 物理错误** | 前向纠错 (FEC) 计数 | 物理链路质量的核心指标 |
-| **内网延迟** | HA 到光猫的物理响应 | 基于 ICMP Ping 探测 |
-
 ## ⚠️ 免责声明
 * 请确保你的iStoreOS设备已开启 SSH 权限。
 * 本脚本涉及模拟登录操作，请勿在公网环境下暴露 SSH 端口。
