@@ -1,12 +1,15 @@
 # ==========================================
-# iStoreOS-Flow 卡片
+# iStoreOS-Flow 仪表盘卡片配置
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.8
+# 版本：1.3.1
 # 日期：2026.03.06
 # ==========================================
 
+# 根容器：所有卡片自上而下垂直堆叠排列
 type: vertical-stack
 cards:
+
+  # --- 模块 1：顶部图片头图 ---
   - type: picture-elements
     image: /local/img/istoreos_flow.jpg
     aspect_ratio: "21:9"
@@ -22,6 +25,7 @@ cards:
           top: 35px
           transform: none
         card_mod:
+          # 利用 CSS 伪元素强行覆盖文本，显示漂亮的 "iStoreOS-Flow" 标题
           style: |
             :host { font-size: 0px !important; }
             :host::before {
@@ -30,6 +34,8 @@ cards:
               color: white !important; letter-spacing: 4px !important;
               text-shadow: 0px 3px 12px rgba(0,0,0,0.8); display: block;
             }
+
+  # --- 模块 2：实时网速折线图 ---
   - type: custom:mini-graph-card
     entities:
       - entity: sensor.istoreos_wan_download_speed
@@ -39,13 +45,15 @@ cards:
         name: 上传
         color: "#ffc400"
         y_axis: secondary
-    hours_to_show: 0.5
+    hours_to_show: 0.5 # 显示过去半小时的曲线
     line_width: 3
     show:
       fill: fade
       animate: true
       legend: true
       state: true
+
+  # --- 模块 3：公网 IP 及主旁路由状态 ---
   - type: custom:mushroom-template-card
     entity: sensor.istoreos_flow_data
     primary: "{{ state_attr(entity, 'ip') | default('未知') }}"
@@ -65,6 +73,8 @@ cards:
           border-radius: 12px;
           background: {{ 'rgba(0, 123, 255, 0.05)' if state_attr('sensor.istoreos_flow_data', 'mode') == 'main' else 'rgba(255, 165, 0, 0.05)' }};
         }
+
+  # --- 模块 4：总流量与当前网速详情 (两列并排) ---
   - type: grid
     columns: 2
     square: false
@@ -82,6 +92,8 @@ cards:
         secondary: "当前速度: {{ states('sensor.istoreos_wan_upload_speed') }} Mbps"
         icon: mdi:arrow-up-bold-circle
         icon_color: orange
+
+  # --- 模块 5：系统核心三大指标：CPU、温度、内存 (三列并排) ---
   - type: grid
     columns: 3
     square: false
@@ -101,6 +113,73 @@ cards:
         name: RAM 占用
         icon: mdi:memory
         icon_color: purple
+
+  # --- 模块 6：网络连接质量与设备数 (两列并排) ---
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_latency
+        primary: "网络延迟: {{ states(entity) }} ms"
+        # 【已修复】：按照你确认的逻辑，将 0 判为断开，<100 判为健康，其他判为拥堵
+        secondary: |
+          {% set p = states(entity) | float(0) %} 
+          {% if p == 0 %}
+            网络连接错误
+          {% elif p < 100 %}
+            网络质量健康
+          {% else %}
+            网络环境拥堵
+          {% endif %}
+        icon: mdi:pulse
+        features_position: bottom
+        # 同步修复颜色逻辑匹配文字
+        color: >
+          {% set p = states(entity) | float(0) %} 
+          {% if p == 0 %} grey 
+          {% elif p < 100 %} green 
+          {% else %} red 
+          {% endif %}
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_connected_devices
+        primary: 联网设备
+        secondary: 已连接 {{ states(entity) }} 台
+        icon: mdi:devices
+        color: green
+        features_position: bottom
+
+  # --- 模块 7：磁盘轮播与运行时间 (两列并排) ---
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_disk
+        primary: 储存空间
+        secondary: >
+          {% set disks = state_attr('sensor.istoreos_flow_data', 'disks') %} 
+          {% if disks is not none and disks | length > 0 %}
+            {# 基于当前系统时间的秒数，实现每 10 秒自动切换展示下一块硬盘的功能 #}
+            {% set disk_index = (now().second // 10) % disks | length %}
+            {% set disk = disks[disk_index] %}
+            {% set used_p = ((disk.total - disk.free) / disk.total * 100) | round(0) if disk.total > 0 else 0 %}
+            ({{ disk_index + 1 }}/{{ disks | length }}) {{ disk.name | upper }}: {{ used_p }}%
+          {% else %}
+            正在获取磁盘数据...
+          {% endif %}
+        icon: mdi:harddisk
+        features_position: bottom
+        color: cyan
+      - type: custom:mushroom-template-card
+        entity: sensor.istoreos_uptime_formatted
+        primary: 运行时间
+        secondary: "{{ states(entity) }}"
+        icon: mdi:clock-outline
+        color: light-blue
+        features_position: bottom
+
+  # --- 模块 8：代理状态、版本号及重启操作 (三列并排) ---
   - type: grid
     columns: 3
     square: false
@@ -125,22 +204,26 @@ cards:
       - type: custom:mushroom-template-card
         primary: 重启设备
         icon: mdi:restart
-        icon_color: red
-        layout: horizontal
+        # 点击触发重启路由器的服务命令，并带有防误触确认框
         tap_action:
           action: call-service
           service: shell_command.reboot_istoreos_flow
           confirmation:
             text: 确定重启 iStoreOS 吗？
+        color: red
+        features_position: bottom
+
+  # --- 模块 9：底部托盘 - 物理网口状态列表 ---
   - type: custom:mushroom-template-card
     entity: sensor.istoreos_flow_data
     primary: 物理网口状态
     secondary: >
-      {% set ports = state_attr('sensor.istoreos_flow_data', 'ports') %} {% if
-      ports is not none %}
+      {% set ports = state_attr('sensor.istoreos_flow_data', 'ports') %} 
+      {% if ports is not none %}
         {% if ports | length == 0 %}
           未匹配到物理网口
         {% else %}
+          {# 循环遍历所有的网口，将其状态拼接到一起，中间用圆点分隔 #}
           {% set ns = namespace(res=[]) %}
           {% for port in ports %}
             {% set state_text = port.speed ~ ' Mbps' if port.state == 'up' and port.speed > 0 else '未连接' %}
@@ -152,13 +235,13 @@ cards:
         正在获取数据...
       {% endif %}
     icon: mdi:ethernet-cable
-    icon_color: >
-      {% set ports = state_attr('sensor.istoreos_flow_data', 'ports') %} {% if
-      ports and ports | selectattr('state', 'eq', 'up') | list | length > 0 %}
+    multiline_secondary: true # 开启多行显示，防止网口过多被截断
+    # 只要有一个网口是连接状态，图标就显示绿色，全断开才显示灰色
+    color: >
+      {% set ports = state_attr('sensor.istoreos_flow_data', 'ports') %} 
+      {% if ports and ports | selectattr('state', 'eq', 'up') | list | length > 0 %}
         green
       {% else %}
         grey
       {% endif %}
-    multiline_secondary: true
-    fill_container: true
-
+    features_position: bottom
