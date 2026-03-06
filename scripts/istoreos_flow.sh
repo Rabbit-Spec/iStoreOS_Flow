@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 数据采集脚本 (精准排查适配版)
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.8
+# 版本：1.2.9
 # 日期：2026.03.06
 # ==========================================
 
@@ -57,7 +57,7 @@ case "$ACTION" in
 
             ports_json="["
             first_port=1
-            for iface in $(ls /sys/class/net/ | grep -E "^(eth|en|lan|wan|igb)"); do
+            for iface in $(ls /sys/class/net/ | grep -E "^(eth|en|lan|wan|igb|br-)"); do
                 operstate=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "down")
                 if [ "$operstate" = "up" ]; then
                     speed=$(cat /sys/class/net/$iface/speed 2>/dev/null || echo "0")
