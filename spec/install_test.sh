@@ -2,7 +2,7 @@
 # ==========================================
 # iStoreOS-Flow 一键部署脚本
 # 作者：https://github.com/Rabbit-Spec
-# 版本：1.2.2
+# 版本：1.2.4
 # 日期：2026.03.06
 # ==========================================
 
@@ -15,9 +15,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'         
 
-# 定义基础 URL
+# 定义基础 URL 及防缓存变量
 RAW_URL="https://raw.githubusercontent.com/Rabbit-Spec/iStoreOS_Flow/main"
-# 💡 新增：定义防缓存随机变量
 T=$(date +%s)
 
 # --- 封装日志函数 ---
@@ -29,7 +28,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # --- 脚本逻辑 ---
 echo -e "${BLUE}======================================================${NC}"
 echo -e "          🚀 欢迎使用 iStoreOS-Flow 部署向导"
-echo -e "        🏷️  版本: ${BLUE}v1.2.2${NC}"
+echo -e "                🏷️  版本: v1.2.4"
 echo -e "${BLUE}======================================================${NC}"
 
 # 1. 自动修复 HA 主机名
@@ -48,7 +47,7 @@ fi
 # 2. IP 获取
 INPUT_IP=""
 echo -e "${YELLOW}👉 步骤 1/5: 请输入 iStoreOS 的 IP (直接回车默认 192.168.1.1): ${NC}"
-read INPUT_IP </dev/tty || true
+read INPUT_IP </tty || read INPUT_IP </dev/tty || true
 OW_IP=$(echo "$INPUT_IP" | tr -d '\r\n ')
 if [ -z "$OW_IP" ]; then
     OW_IP="192.168.1.1"
@@ -86,30 +85,31 @@ else
 fi
 
 # 4. 下载文件
+# 💡 这里增加了明确的步骤日志，确保你知道脚本运行到了哪里
 log "步骤 3/5: 开始拉取 iStoreOS-Flow 核心组件..."
 
 log "正在初始化本地目录结构..."
 mkdir -p /config/shell /config/packages /config/www/img
 success "目录结构准备就绪。"
 
-# 详细文件下载日志 (已注入防缓存变量 $T)
+# 详细文件下载日志 (增加 v=$T 防缓存)
 log "正在下载数据采集脚本 (istoreos_flow.sh)..."
-curl -sSL --connect-timeout 10 --retry 3 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh?v=$T" || {
-    error "下载脚本失败！请检查 GitHub 连通性。"
+curl -sSL --connect-timeout 15 --retry 3 -o /config/shell/istoreos_flow.sh "${RAW_URL}/scripts/istoreos_flow.sh?v=$T" || {
+    error "下载 istoreos_flow.sh 失败！请检查网络。"
     exit 1
 }
 success "istoreos_flow.sh 下载成功。"
 
 log "正在下载传感器定义文件 (istoreos_flow.yaml)..."
-curl -sSL --connect-timeout 10 --retry 3 -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml?v=$T" || {
-    error "下载 YAML 配置文件失败！请检查 GitHub 连通性。"
+curl -sSL --connect-timeout 15 --retry 3 -o /config/packages/istoreos_flow.yaml "${RAW_URL}/packages/istoreos_flow.yaml?v=$T" || {
+    error "下载 istoreos_flow.yaml 失败！"
     exit 1
 }
 success "istoreos_flow.yaml 下载成功。"
 
 log "正在下载仪表盘背景图 (istoreos_flow.jpg)..."
 curl -sSL --connect-timeout 20 --retry 5 -o /config/www/img/istoreos_flow.jpg "${RAW_URL}/img/istoreos_flow.jpg?v=$T" || {
-    error "关键资源背景图下载失败！请检查 GitHub 连通性。"
+    error "背景图下载失败！"
     exit 1
 }
 success "istoreos_flow.jpg 下载成功。"
@@ -160,7 +160,7 @@ echo -e "${GREEN}======================================================${NC}"
 echo -e "             🎉 ${YELLOW}iStoreOS-Flow 部署成功！${NC}"
 echo -e ""
 echo -e "        🧑‍💻  作者: ${BLUE}https://github.com/Rabbit-Spec${NC}"
-echo -e "        🏷️  版本: ${BLUE}v1.2.2${NC}"
+echo -e "        🏷️  版本: ${BLUE}v1.2.4${NC}"
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${YELLOW}📌 后续操作指南：${NC}\n"
 
